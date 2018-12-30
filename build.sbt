@@ -1,5 +1,10 @@
 import sbtcrossproject.{crossProject, CrossType}
 
+lazy val sharedDependencies =
+  libraryDependencies ++= Seq(
+    "org.codecraftgame" %%% "codecraft" % "0.6.1" changing()
+  )
+
 lazy val server = (project in file("server")).settings(commonSettings).settings(
   scalaJSProjects := Seq(client),
   pipelineStages in Assets := Seq(scalaJSPipeline),
@@ -11,8 +16,7 @@ lazy val server = (project in file("server")).settings(commonSettings).settings(
     guice,
     specs2 % Test
   ),
-  // Compile the project before generating Eclipse files, so that generated .scala or .class files for views and routes are present
-  EclipseKeys.preTasks := Seq(compile in Compile)
+  sharedDependencies
 ).enablePlugins(PlayScala).
   dependsOn(sharedJvm)
 
@@ -20,7 +24,8 @@ lazy val client = (project in file("client")).settings(commonSettings).settings(
   scalaJSUseMainModuleInitializer := true,
   libraryDependencies ++= Seq(
     "org.scala-js" %%% "scalajs-dom" % "0.9.5"
-  )
+  ),
+  sharedDependencies
 ).enablePlugins(ScalaJSPlugin, ScalaJSWeb).
   dependsOn(sharedJs)
 
@@ -32,7 +37,7 @@ lazy val sharedJvm = shared.jvm
 lazy val sharedJs = shared.js
 
 lazy val commonSettings = Seq(
-  scalaVersion := "2.12.5",
+  scalaVersion := "2.11.8",
   organization := "com.clemenswinter"
 )
 
