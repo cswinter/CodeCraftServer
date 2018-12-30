@@ -1,8 +1,9 @@
-import sbtcrossproject.{crossProject, CrossType}
+
 
 lazy val sharedDependencies =
   libraryDependencies ++= Seq(
-    "org.codecraftgame" %%% "codecraft" % "0.6.1" changing()
+    "org.codecraftgame" %%% "codecraft" % "0.6.1" changing(),
+    "com.lihaoyi" %%% "scalatags" % "0.6.7"
   )
 
 lazy val server = (project in file("server")).settings(commonSettings).settings(
@@ -29,7 +30,7 @@ lazy val client = (project in file("client")).settings(commonSettings).settings(
 ).enablePlugins(ScalaJSPlugin, ScalaJSWeb).
   dependsOn(sharedJs)
 
-lazy val shared = crossProject(JSPlatform, JVMPlatform)
+lazy val shared = crossProject
   .crossType(CrossType.Pure)
   .in(file("shared"))
   .settings(commonSettings)
@@ -42,4 +43,4 @@ lazy val commonSettings = Seq(
 )
 
 // loads the server project at sbt startup
-onLoad in Global := (onLoad in Global).value andThen {s: State => "project server" :: s}
+onLoad in Global := (onLoad in Global).value andThen { s: State => "project server" :: s }

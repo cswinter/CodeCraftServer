@@ -1,0 +1,48 @@
+body, html {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    padding: 0;
+    margin: 0;
+}
+#webgl-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: none;
+    z-index: 0;
+}
+#tdcontent, #page {
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+.floating-text {
+    z-index: 1;
+    position: absolute;
+    width: auto;
+    height: auto;
+    overflow: hidden;
+}
+.large-floating-text {
+    z-index: 1;
+    position: absolute;
+    width: auto;
+    height: auto;
+    overflow: hidden;
+    font-size: 90px;
+}
+#large-text-dim-test {
+    position: absolute;
+    visibility: hidden;
+    height: auto;
+    width: auto;
+    font-size: 90px;
+}
+#small-text-dim-test {
+    position: absolute;
+    visibility: hidden;
+    height: auto;
+    width: auto;
+}
+
