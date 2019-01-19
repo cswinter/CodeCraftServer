@@ -3,7 +3,8 @@
 lazy val sharedDependencies =
   libraryDependencies ++= Seq(
     "org.codecraftgame" %%% "codecraft" % "0.6.1" changing(),
-    "com.lihaoyi" %%% "scalatags" % "0.6.7"
+    "com.lihaoyi" %%% "scalatags" % "0.6.7",
+    "com.lihaoyi" %% "upickle" % "0.4.1"
   )
 
 lazy val server = (project in file("server")).settings(commonSettings).settings(

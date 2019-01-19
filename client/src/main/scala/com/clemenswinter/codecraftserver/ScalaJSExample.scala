@@ -11,7 +11,7 @@ import scala.scalajs.js.annotation.JSExport
 object RunGame {
   def main(args: Array[String]): Unit = {
     val canvas: html.Canvas = document.getElementById("webgl-canvas").asInstanceOf[html.Canvas];
-    val multiplayer = false
+    val multiplayer = true
     new game.Settings(recordReplays = false).setAsDefault()
     TheGameMaster.canvas = canvas
 

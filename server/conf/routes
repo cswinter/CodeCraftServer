@@ -3,8 +3,11 @@
 # ~~~~
 
 # Home page
-GET        /                             com.clemenswinter.codecraftserver.controllers.Application.index
+GET        /                                       com.clemenswinter.codecraftserver.controllers.Application.index
+
+GET        /ajax/multiplayerServerStatus           com.clemenswinter.codecraftserver.controllers.Application.mpssJson
 
 # Prefix must match `play.assets.urlPrefix`
 GET        /assets/*file                 controllers.Assets.at(file)
 GET        /versionedAssets/*file        controllers.Assets.versioned(path="/public", file: Asset)
+
