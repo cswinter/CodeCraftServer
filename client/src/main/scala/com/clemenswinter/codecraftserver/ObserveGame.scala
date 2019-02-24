@@ -8,7 +8,7 @@ import org.scalajs.dom.{document, html}
 
 import scala.scalajs.js.annotation.JSExport
 
-object RunGame {
+object ObserveGame {
   def main(args: Array[String]): Unit = {
     val canvas: html.Canvas = document.getElementById("webgl-canvas").asInstanceOf[html.Canvas];
     val multiplayer = true

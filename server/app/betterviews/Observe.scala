@@ -1,6 +1,6 @@
 package betterviews
 
-object Index {
+object Observe {
   def apply(): String = {
     """
   <!DOCTYPE html>

@@ -23,6 +23,25 @@ class Application @Inject()(
     Ok(Index()).as("text/html")
   }
 
+  def observe = Action {
+    Ok(Observe()).as("text/html")
+  }
+
+  def startGame = Action {
+    val id = multiplayerServer.startGame()
+    Ok(f"{id: $id}").as("application/json")
+  }
+
+  def act(gameID: Int, playerID: Int) = Action {
+    multiplayerServer.act(gameID, playerID)
+    Ok("success").as("application/json")
+  }
+
+  def playerState(gameID: Int, playerID: Int) = Action {
+    val payload = multiplayerServer.observe(gameID, playerID)
+    Ok(write(payload)).as("application/json")
+  }
+
   def mpssJson = Action.async { implicit request =>
     val maxGameStats = request.getQueryString("maxgames").fold(250)(x => Try { x.toInt }.getOrElse(250))
     implicit val timeout = Timeout(1 seconds)
