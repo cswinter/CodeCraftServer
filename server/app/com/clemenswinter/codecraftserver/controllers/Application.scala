@@ -29,7 +29,7 @@ class Application @Inject()(
 
   def startGame = Action {
     val id = multiplayerServer.startGame()
-    Ok(f"{id: $id}").as("application/json")
+    Ok(f"""{"id": $id}""").as("application/json")
   }
 
   def act(gameID: Int, playerID: Int) = Action {

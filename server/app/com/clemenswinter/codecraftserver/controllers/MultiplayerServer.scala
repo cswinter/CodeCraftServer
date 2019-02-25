@@ -34,12 +34,15 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
 
 
   def observe(gameID: Int, playerID: Int): Observation = {
-    games(gameID).externalPlayers(playerID).observe()
+    val game = games(gameID)
+    game.externalPlayers(playerID).observe(game.simulator)
   }
 
 
   def act(gameID: Int, playerID: Int): Unit = {
-    games(gameID).externalPlayers(playerID).act()
+    val game = games(gameID)
+    if (!game.simulator.winner.isEmpty) return
+    game.externalPlayers(playerID).act()
   }
 
 
@@ -78,24 +81,42 @@ class PassiveDroneController(
   def setAction(action: Action): Unit = {
     nextAction.success(action)
   }
+
+  override def metaController = Some(state)
 }
 
 class PlayerController(
-  var alliedDrones: Set[PassiveDroneController] = Set.empty
-) {
-  def observe(): Observation = {
+  var alliedDrones: Set[PassiveDroneController] = Set.empty,
+  var observationsReady: Promise[Unit] = Promise()
+) extends MetaController {
+  def observe(sim: DroneWorldSimulator): Observation = {
+    Await.ready(observationsReady.future, Duration.Inf)
+
     Observation(
+      sim.timestep,
+      sim.winner.map(_.id),
       for (d <- alliedDrones.toSeq)
         yield DroneObservation(d.position.x, d.position.y, d.orientation.toFloat)
     )
   }
 
   def act(): Unit = {
+    observationsReady = Promise()
     for (d <- alliedDrones) d.setAction(DoNothing)
+  }
+
+  override def onTick(): Unit = {
+    if (!observationsReady.isCompleted) observationsReady.success(())
+  }
+
+  override def gameOver(winner: Player): Unit = {
+    observationsReady.success(())
   }
 }
 
 case class Observation(
+  timestep: Int,
+  winner: Option[Int],
   alliedDrones: Seq[DroneObservation]
 )
 
