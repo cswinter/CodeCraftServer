@@ -69,6 +69,10 @@ class PassiveDroneController(
   nextAction.success(DoNothing)
 
   override def onTick(): Unit = {
+    if (missileCooldown == 0 && !enemiesInSight.isEmpty) {
+      val closest = enemiesInSight.minBy(enemy => (enemy.position - position).lengthSquared)
+      if (isInMissileRange(closest)) fireMissilesAt(closest)
+    }
     val action = Await.result(nextAction.future, Duration.Inf)
     action match {
       case DoNothing =>
