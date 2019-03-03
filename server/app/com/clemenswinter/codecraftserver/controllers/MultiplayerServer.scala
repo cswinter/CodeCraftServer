@@ -19,6 +19,7 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
   println("Starting multiplayer server")
   var gameID = 0
   var games = Map.empty[Int, Game]
+  var completedGames = Map.empty[Int, Observation]
   val actorRef = Server.start(maxGames = 20)
   implicit val timeout = Timeout(10 seconds)
   val server = Await.result(actorRef ? Server.ScrewThis, 11 seconds).asInstanceOf[cwinter.codecraft.core.multiplayer.MultiplayerServer]
@@ -34,8 +35,14 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
 
 
   def observe(gameID: Int, playerID: Int): Observation = {
+    if (completedGames.contains(gameID)) return completedGames(gameID)
     val game = games(gameID)
-    game.externalPlayers(playerID).observe(game.simulator)
+    val observation = game.externalPlayers(playerID).observe(game.simulator)
+    if (!observation.winner.isEmpty) {
+      games -= gameID
+      completedGames += gameID -> observation
+    }
+    observation
   }
 
 
@@ -44,7 +51,6 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
     if (!game.simulator.winner.isEmpty) return
     game.externalPlayers(playerID).act()
   }
-
 
   // it appears the class loader will not work during shutdown, so we need to get an instance of Server.Stop
   //       before the stop hook gets invoked
