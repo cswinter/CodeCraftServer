@@ -43,6 +43,23 @@ class Application @Inject()(
     Ok(write(payload)).as("application/json")
   }
 
+  def batchAct() = Action { implicit request =>
+    println("batchAct")
+    val actions = read[Map[String, Action]](request.body.asJson.get.toString)
+    for ((gameID, action) <- actions) {
+      multiplayerServer.act(gameID.toInt, 0, action)
+    }
+    Ok("success").as("application/json")
+  }
+
+  def batchPlayerState() = Action { implicit request =>
+    println("batchObserve")
+    val games = read[Seq[Int]](request.body.asJson.get.toString)
+    val payload: Seq[Observation] = for (gameID <- games)
+      yield multiplayerServer.observe(gameID, 0)
+    Ok(write(payload)).as("application/json")
+  }
+
   def mpssJson = Action.async { implicit request =>
     val maxGameStats = request.getQueryString("maxgames").fold(250)(x => Try { x.toInt }.getOrElse(250))
     implicit val timeout = Timeout(1 seconds)
@@ -52,5 +69,9 @@ class Application @Inject()(
       status = untypedStatus.asInstanceOf[DetailedStatus]
       lessGames = status.games.sortBy(-_.startTimestamp).take(maxGameStats)
     } yield Ok(write(status.copy(games = lessGames))).as("application/json")
+  }
+
+  def debugState = Action {
+    Ok(write(multiplayerServer.debugState)).as("application/json")
   }
 }

@@ -8,8 +8,11 @@ GET        /observe                                com.clemenswinter.codecraftse
 POST       /start-game                             com.clemenswinter.codecraftserver.controllers.Application.startGame
 GET        /observation                            com.clemenswinter.codecraftserver.controllers.Application.playerState(gameID: Int, playerID: Int)
 POST       /act                                    com.clemenswinter.codecraftserver.controllers.Application.act(gameID: Int, playerID: Int)
+GET        /batch-observation                      com.clemenswinter.codecraftserver.controllers.Application.batchPlayerState()
+POST       /batch-act                              com.clemenswinter.codecraftserver.controllers.Application.batchAct()
 
 GET        /ajax/multiplayerServerStatus           com.clemenswinter.codecraftserver.controllers.Application.mpssJson
+GET        /debugState                             com.clemenswinter.codecraftserver.controllers.Application.debugState
 
 # Prefix must match `play.assets.urlPrefix`
 GET        /assets/*file                 controllers.Assets.at(file)

@@ -11,8 +11,7 @@ import play.api.inject.ApplicationLifecycle
 import scala.concurrent.duration._
 import scala.language.postfixOps
 
-import scala.concurrent.Await
-import scala.concurrent.{Promise, Future}
+import scala.concurrent.{Await, Promise, Future, TimeoutException}
 
 @Singleton
 class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
@@ -35,6 +34,7 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
 
 
   def observe(gameID: Int, playerID: Int): Observation = synchronized {
+    println(f"Enter Observe $gameID")
     if (completedGames.contains(gameID)) return completedGames(gameID)
     val game = games(gameID)
     val observation = game.externalPlayers(playerID).observe(game.simulator)
@@ -42,13 +42,28 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
       games -= gameID
       completedGames += gameID -> observation
     }
+    println(f"Exit Observe $gameID")
     observation
   }
 
   def act(gameID: Int, playerID: Int, action: Action): Unit = synchronized {
+    println(f"Enter Act $gameID")
     val game = games(gameID)
     if (!game.simulator.winner.isEmpty) return
     game.externalPlayers(playerID).act(action)
+    println(f"Exit Act $gameID")
+  }
+
+  def debugState(): Seq[GameDebugState] = {
+    for ((id, game) <- games.toSeq) yield {
+      GameDebugState(
+        id,
+        game.externalPlayers(0).observationsReady.isCompleted,
+        game.simulator.winner.map(_.id),
+        game.simulator.currentPhase.toString,
+        game.externalPlayers(0).unsafe_observe(game.simulator)
+      )
+    }
   }
 
   // it appears the class loader will not work during shutdown, so we need to get an instance of Server.Stop
@@ -70,7 +85,14 @@ class PassiveDroneController(
       val closest = enemiesInSight.minBy(enemy => (enemy.position - position).lengthSquared)
       if (isInMissileRange(closest)) fireMissilesAt(closest)
     }
-    val action = Await.result(nextAction.future, Duration.Inf)
+    val action = try {
+      Await.result(nextAction.future,Duration.Inf)// 60 seconds)
+    } catch {
+      case e: TimeoutException => {
+        println("DROPPED ACTION")
+        DoNothing
+      }
+    }
 
     for (spec <- action.buildDrone) {
       buildDrone(new PassiveDroneController(state), spec(0), spec(1), spec(2), spec(3), spec(4))
@@ -118,11 +140,20 @@ class PassiveDroneController(
 
 class PlayerController(
   var alliedDrones: Set[PassiveDroneController] = Set.empty,
-  var observationsReady: Promise[Unit] = Promise()
+  @volatile var observationsReady: Promise[Unit] = Promise()
 ) extends MetaController {
   def observe(sim: DroneWorldSimulator): Observation = {
     Await.ready(observationsReady.future, Duration.Inf)
 
+    Observation(
+      sim.timestep,
+      sim.winner.map(_.id),
+      for (d <- alliedDrones.toSeq)
+        yield DroneObservation(d.position.x, d.position.y, d.orientation.toFloat)
+    )
+  }
+
+  def unsafe_observe(sim: DroneWorldSimulator): Observation = {
     Observation(
       sim.timestep,
       sim.winner.map(_.id),
@@ -141,7 +172,9 @@ class PlayerController(
   }
 
   override def gameOver(winner: Player): Unit = {
-    observationsReady.success(())
+    if (!observationsReady.isCompleted) {
+      observationsReady.success(())
+    }
   }
 }
 
@@ -172,3 +205,12 @@ object DoNothing extends Action(
   transfer=false,
   turn=0
 )
+
+case class GameDebugState(
+  id: Int,
+  observationsReady: Boolean,
+  winner: Option[Int],
+  phase: String,
+  observation: Observation
+)
+
