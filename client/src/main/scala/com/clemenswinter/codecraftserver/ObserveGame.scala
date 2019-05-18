@@ -10,7 +10,8 @@ import scala.scalajs.js.annotation.JSExport
 
 object ObserveGame {
   def main(args: Array[String]): Unit = {
-    val canvas: html.Canvas = document.getElementById("webgl-canvas").asInstanceOf[html.Canvas];
+    val canvas: html.Canvas =
+      document.getElementById("webgl-canvas").asInstanceOf[html.Canvas];
     val multiplayer = true
     new game.Settings(recordReplays = false).setAsDefault()
     TheGameMaster.canvas = canvas

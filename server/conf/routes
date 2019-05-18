@@ -5,7 +5,7 @@
 # Home page
 GET        /                                       com.clemenswinter.codecraftserver.controllers.Application.index
 GET        /observe                                com.clemenswinter.codecraftserver.controllers.Application.observe
-POST       /start-game                             com.clemenswinter.codecraftserver.controllers.Application.startGame
+POST       /start-game                             com.clemenswinter.codecraftserver.controllers.Application.startGame(maxTicks: Option[Int])
 GET        /observation                            com.clemenswinter.codecraftserver.controllers.Application.playerState(gameID: Int, playerID: Int)
 POST       /act                                    com.clemenswinter.codecraftserver.controllers.Application.act(gameID: Int, playerID: Int)
 GET        /batch-observation                      com.clemenswinter.codecraftserver.controllers.Application.batchPlayerState()

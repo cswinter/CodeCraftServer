@@ -20,4 +20,3 @@ object Index {
       """
   }
 }
-

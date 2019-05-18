@@ -27,8 +27,8 @@ class Application @Inject()(
     Ok(Observe()).as("text/html")
   }
 
-  def startGame = Action {
-    val id = multiplayerServer.startGame()
+  def startGame(maxTicks: Option[Int]) = Action {
+    val id = multiplayerServer.startGame(maxTicks)
     Ok(f"""{"id": $id}""").as("application/json")
   }
 
@@ -44,7 +44,6 @@ class Application @Inject()(
   }
 
   def batchAct() = Action { implicit request =>
-    println("batchAct")
     val actions = read[Map[String, Action]](request.body.asJson.get.toString)
     for ((gameID, action) <- actions) {
       multiplayerServer.act(gameID.toInt, 0, action)
@@ -53,7 +52,6 @@ class Application @Inject()(
   }
 
   def batchPlayerState() = Action { implicit request =>
-    println("batchObserve")
     val games = read[Seq[Int]](request.body.asJson.get.toString)
     val payload: Seq[Observation] = for (gameID <- games)
       yield multiplayerServer.observe(gameID, 0)
@@ -61,7 +59,9 @@ class Application @Inject()(
   }
 
   def mpssJson = Action.async { implicit request =>
-    val maxGameStats = request.getQueryString("maxgames").fold(250)(x => Try { x.toInt }.getOrElse(250))
+    val maxGameStats = request
+      .getQueryString("maxgames")
+      .fold(250)(x => Try { x.toInt }.getOrElse(250))
     implicit val timeout = Timeout(1 seconds)
     val serverStatusFuture = multiplayerServer.actorRef ? Server.GetDetailedStatus
     for {
