@@ -137,11 +137,11 @@ class PassiveDroneController(
   }
 
   override def onSpawn(): Unit = {
-    state.alliedDrones += this
+    state.alliedDrones :+= this
   }
 
   override def onDeath(): Unit = {
-    state.alliedDrones -= this
+    state.alliedDrones = state.alliedDrones.filter(_ != this)
   }
 
   override def onMineralEntersVision(m: MineralCrystal): Unit = {
@@ -156,7 +156,7 @@ class PassiveDroneController(
 }
 
 class PlayerController(
-  var alliedDrones: Set[PassiveDroneController] = Set.empty,
+  var alliedDrones: Seq[PassiveDroneController] = Seq.empty,
   @volatile var observationsReady: Promise[Unit] = Promise()
 ) extends MetaController {
   var minerals = Set.empty[MineralCrystal]
@@ -171,7 +171,7 @@ class PlayerController(
     Observation(
       sim.timestep,
       sim.winner.map(_.id),
-      for (d <- alliedDrones.toSeq)
+      for (d <- alliedDrones)
         yield
           DroneObservation(
             d.position.x,

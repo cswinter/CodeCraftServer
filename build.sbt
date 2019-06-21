@@ -15,6 +15,7 @@ lazy val server = (project in file("server"))
     compile in Compile := ((compile in Compile) dependsOn scalaJSPipeline).value,
     libraryDependencies ++= Seq(
       "com.vmunier" %% "scalajs-scripts" % "1.1.2",
+      "javax.xml.bind" % "jaxb-api" % "2.3.0",
       guice,
       specs2 % Test
     ),
