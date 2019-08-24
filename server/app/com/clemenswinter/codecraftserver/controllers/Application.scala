@@ -1,14 +1,19 @@
 package com.clemenswinter.codecraftserver.controllers
 
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.nio.FloatBuffer
+
 import javax.inject._
 import betterviews._
-
 import cwinter.codecraft.core.multiplayer.{DetailedStatus, Server}
+
 import scala.concurrent.duration._
 import scala.language.postfixOps
 import akka.pattern.ask
 import akka.util.Timeout
 import play.api.mvc._
+
 import scala.util.Try
 import scala.concurrent.ExecutionContext.Implicits.global
 import upickle.default._
@@ -51,11 +56,45 @@ class Application @Inject()(
     Ok("success").as("application/json")
   }
 
-  def batchPlayerState() = Action { implicit request =>
+  def batchPlayerState(json: Boolean) = Action { implicit request =>
     val games = read[Seq[Int]](request.body.asJson.get.toString)
     val payload: Seq[Observation] = for (gameID <- games)
       yield multiplayerServer.observe(gameID, 0)
-    Ok(write(payload)).as("application/json")
+    if (json) {
+      Ok(write(payload)).as("application/json")
+    } else {
+      Ok(serializeObs(payload)).as("application/octet-stream")
+    }
+  }
+
+  def serializeObs(obs: Seq[Observation]): Array[Byte] = {
+    val bb: ByteBuffer = ByteBuffer.allocate(4 * (obs.length * 47 + obs.length))
+    bb.order(ByteOrder.nativeOrder)
+    for (ob <- obs) {
+      val drone = ob.alliedDrones(0)
+      val x = drone.xPos
+      val y = drone.yPos
+      bb.putFloat(x / 1000.0f)
+      bb.putFloat(y / 1000.0f)
+      bb.putFloat(math.sin(drone.orientation).toFloat)
+      bb.putFloat(math.cos(drone.orientation).toFloat)
+      bb.putFloat(drone.storedResources / 50.0f)
+      bb.putFloat(if (drone.isConstructing) 1.0f else -1.0f)
+      bb.putFloat(if (drone.isHarvesting) 1.0f else -1.0f)
+      for (m <- ob.minerals.sortBy(m => m.xPos * m.xPos + m.yPos * m.yPos).take(10)) {
+        bb.putFloat((m.xPos - x) / 1000.0f)
+        bb.putFloat((m.yPos - y) / 1000.0f)
+        bb.putFloat(math.sqrt((m.yPos - y) * (m.yPos - y) + (m.xPos - x) * (m.xPos - x)).toFloat / 1000.0f)
+        bb.putFloat(m.size / 100.0f)
+      }
+      for (m <- 0 until (10 - ob.minerals.size) * 4) {
+        bb.putFloat(0.0f)
+      }
+    }
+    for (ob <- obs) {
+      bb.putFloat(ob.winner.map(_ + 1.0f).getOrElse(0))
+    }
+    bb.array()
   }
 
   def mpssJson = Action.async { implicit request =>
