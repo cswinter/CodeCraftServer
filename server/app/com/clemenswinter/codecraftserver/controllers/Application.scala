@@ -81,7 +81,7 @@ class Application @Inject()(
       bb.putFloat(drone.storedResources / 50.0f)
       bb.putFloat(if (drone.isConstructing) 1.0f else -1.0f)
       bb.putFloat(if (drone.isHarvesting) 1.0f else -1.0f)
-      for (m <- ob.minerals.sortBy(m => m.xPos * m.xPos + m.yPos * m.yPos).take(10)) {
+      for (m <- ob.minerals.sortBy(m => (m.xPos * m.xPos + m.yPos * m.yPos) / m.size).take(10)) {
         bb.putFloat((m.xPos - x) / 1000.0f)
         bb.putFloat((m.yPos - y) / 1000.0f)
         bb.putFloat(math.sqrt((m.yPos - y) * (m.yPos - y) + (m.xPos - x) * (m.xPos - x)).toFloat / 1000.0f)
