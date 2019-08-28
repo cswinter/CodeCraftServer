@@ -68,9 +68,10 @@ class Application @Inject()(
   }
 
   def serializeObs(obs: Seq[Observation]): Array[Byte] = {
-    val bb: ByteBuffer = ByteBuffer.allocate(4 * (obs.length * 47 + obs.length))
+    val bb: ByteBuffer = ByteBuffer.allocate(4 * (obs.length * 48 + obs.length))
     bb.order(ByteOrder.nativeOrder)
     for (ob <- obs) {
+      bb.putFloat(ob.timestep.toFloat / ob.maxGameLength)
       val drone = ob.alliedDrones(0)
       val x = drone.xPos
       val y = drone.yPos

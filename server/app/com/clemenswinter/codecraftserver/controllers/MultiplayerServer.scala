@@ -27,13 +27,14 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
     .asInstanceOf[cwinter.codecraft.core.multiplayer.MultiplayerServer]
 
   def startGame(maxTicks: Option[Int], actionDelay: Int): Integer = synchronized {
-    val player1 = new PlayerController(actionDelay)
+    val maxGameLength = maxTicks.getOrElse(3 * 60 * 60)
+    val player1 = new PlayerController(actionDelay, maxGameLength)
     val simulator = server.startLocalGame(
       new PassiveDroneController(player1, actionDelay),
       //TheGameMaster.replicatorAI())
       //TheGameMaster.level1AI(),
       new AFK(),
-      Seq(DestroyEnemyMotherships, LargestFleet(maxTicks.getOrElse(3 * 60 * 60)))
+      Seq(DestroyEnemyMotherships, LargestFleet(maxGameLength))
     )
     player1.sim = Some(simulator)
     gameID += 1
@@ -152,7 +153,7 @@ class PassiveDroneController(
   override def metaController = Some(state)
 }
 
-class PlayerController(val actionDelay: Int) extends MetaController {
+class PlayerController(val actionDelay: Int, val maxGameLength: Int) extends MetaController {
   var alliedDrones: Seq[PassiveDroneController] = Seq.empty
   @volatile var sim: Option[DroneWorldSimulator] = None
   var minerals = Set.empty[MineralCrystal]
@@ -166,6 +167,7 @@ class PlayerController(val actionDelay: Int) extends MetaController {
     val s = sim.get
     Observation(
       s.timestep,
+      maxGameLength,
       s.winner.map(_.id),
       for (d <- alliedDrones)
         yield
@@ -214,6 +216,7 @@ class PlayerController(val actionDelay: Int) extends MetaController {
 
 case class Observation(
   timestep: Int,
+  maxGameLength: Int,
   winner: Option[Int],
   alliedDrones: Seq[DroneObservation],
   minerals: Seq[MineralObservation],
