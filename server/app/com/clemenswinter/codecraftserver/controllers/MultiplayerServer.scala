@@ -10,7 +10,6 @@ import akka.util.Timeout
 import play.api.inject.ApplicationLifecycle
 import scala.concurrent.duration._
 import scala.language.postfixOps
-import java.util.concurrent.{BlockingQueue, ArrayBlockingQueue}
 
 import scala.concurrent.{Await, Promise, Future, TimeoutException}
 
@@ -21,22 +20,21 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
   var games = Map.empty[Int, Game]
   var completedGames = Map.empty[Int, Observation]
   val actorRef = Server.start(maxGames = 20)
-  implicit val timeout: Timeout = Timeout(10 seconds)
+  implicit val timeout = Timeout(10 seconds)
   val server = Await
     .result(actorRef ? Server.ScrewThis, 11 seconds)
     .asInstanceOf[cwinter.codecraft.core.multiplayer.MultiplayerServer]
 
-  def startGame(maxTicks: Option[Int], actionDelay: Int): Integer = synchronized {
+  def startGame(maxTicks: Option[Int]): Integer = synchronized {
     val maxGameLength = maxTicks.getOrElse(3 * 60 * 60)
-    val player1 = new PlayerController(actionDelay, maxGameLength)
+    val player1 = new PlayerController(maxGameLength)
     val simulator = server.startLocalGame(
-      new PassiveDroneController(player1, actionDelay),
+      new PassiveDroneController(player1, Promise.successful(DoNothing)),
       //TheGameMaster.replicatorAI())
       //TheGameMaster.level1AI(),
       new AFK(),
       Seq(DestroyEnemyMotherships, LargestFleet(maxGameLength))
     )
-    player1.sim = Some(simulator)
     gameID += 1
     games += gameID -> Game(simulator, Seq(player1))
     gameID
@@ -63,14 +61,14 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
     game.externalPlayers(playerID).act(action)
   }
 
-  def debugState: Seq[GameDebugState] = {
+  def debugState(): Seq[GameDebugState] = {
     for ((id, game) <- games.toSeq) yield {
       GameDebugState(
         id,
-        game.externalPlayers.head.observations.size(),
+        game.externalPlayers.head.observationsReady.isCompleted,
         game.simulator.winner.map(_.id),
         game.simulator.currentPhase.toString,
-        game.externalPlayers.head.unsafe_observe()
+        game.externalPlayers.head.unsafe_observe(game.simulator)
       )
     }
   }
@@ -89,22 +87,25 @@ class AFK extends DroneController
 
 class PassiveDroneController(
   var state: PlayerController,
-  val actionDelay: Int
+  var nextAction: Promise[Action] = Promise()
 ) extends DroneController {
-  var nextActions: BlockingQueue[Action] = new ArrayBlockingQueue(actionDelay + 2)
-  for (_ <- 0 until actionDelay + 1) nextActions.add(DoNothing)
-
   override def onTick(): Unit = {
     if (missileCooldown == 0 && enemiesInSight.nonEmpty) {
       val closest = enemiesInSight.minBy(enemy => (enemy.position - position).lengthSquared)
       if (isInMissileRange(closest)) fireMissilesAt(closest)
     }
-    val action = nextActions.take()
+    val action = try {
+      Await.result(nextAction.future, Duration.Inf) // 60 seconds)
+    } catch {
+      case e: TimeoutException => {
+        println("DROPPED ACTION")
+        DoNothing
+      }
+    }
+
     for (spec <- action.buildDrone) {
       val droneSpec = DroneSpec(spec(0), spec(1), spec(2), spec(3), spec(4))
-      if (droneSpec.resourceCost < storedResources) {
-        buildDrone(new PassiveDroneController(state, actionDelay), droneSpec)
-      }
+      if (droneSpec.resourceCost < storedResources) buildDrone(new PassiveDroneController(state), droneSpec)
     }
 
     if (action.move && action.turn == 0) {
@@ -132,6 +133,8 @@ class PassiveDroneController(
         alliesInSight.minBy(ally => (ally.position - position).lengthSquared)
       giveResourcesTo(closest)
     }
+
+    nextAction = Promise()
   }
 
   override def onSpawn(): Unit = {
@@ -147,28 +150,29 @@ class PassiveDroneController(
   }
 
   def setAction(action: Action): Unit = {
-    nextActions.put(action)
+    nextAction.success(action)
   }
 
   override def metaController = Some(state)
 }
 
-class PlayerController(val actionDelay: Int, val maxGameLength: Int) extends MetaController {
+class PlayerController(val maxGameLength: Int) extends MetaController {
   var alliedDrones: Seq[PassiveDroneController] = Seq.empty
   @volatile var sim: Option[DroneWorldSimulator] = None
+  @volatile var observationsReady: Promise[Unit] = Promise()
   var minerals = Set.empty[MineralCrystal]
-  var observations: BlockingQueue[Observation] = new ArrayBlockingQueue[Observation](actionDelay + 2)
-  private var firstTick = true
 
-  def observe(sim: DroneWorldSimulator): Observation = observations.take()
+  def observe(sim: DroneWorldSimulator): Observation = {
+    Await.ready(observationsReady.future, Duration.Inf)
 
-  def unsafe_observe(): Observation = {
-    while (this.sim.isEmpty) {}
-    val s = sim.get
+    unsafe_observe(sim)
+  }
+
+  def unsafe_observe(sim: DroneWorldSimulator): Observation = {
     Observation(
-      s.timestep,
+      sim.timestep,
       maxGameLength,
-      s.winner.map(_.id),
+      sim.winner.map(_.id),
       for (d <- alliedDrones)
         yield
           DroneObservation(
@@ -197,6 +201,7 @@ class PlayerController(val actionDelay: Int, val maxGameLength: Int) extends Met
     drone.spec.resourceCost * (drone.hitpoints / drone.maxHitpoints.toDouble + 1.0)
 
   def act(action: Action): Unit = {
+    observationsReady = Promise()
     for (d <- alliedDrones) {
       if (d.constructors > 0) d.setAction(action)
       else d.setAction(DoNothing)
@@ -204,14 +209,14 @@ class PlayerController(val actionDelay: Int, val maxGameLength: Int) extends Met
   }
 
   override def onTick(): Unit = {
-    if (firstTick) {
-      firstTick = false
-      return
-    }
-    observations.add(unsafe_observe())
+    if (!observationsReady.isCompleted) observationsReady.success(())
   }
 
-  override def gameOver(winner: Player): Unit = observations.add(unsafe_observe())
+  override def gameOver(winner: Player): Unit = {
+    if (!observationsReady.isCompleted) {
+      observationsReady.success(())
+    }
+  }
 }
 
 case class Observation(
@@ -265,7 +270,7 @@ object DoNothing
 
 case class GameDebugState(
   id: Int,
-  observationsReady: Int,
+  observationsReady: Boolean,
   winner: Option[Int],
   phase: String,
   observation: Observation

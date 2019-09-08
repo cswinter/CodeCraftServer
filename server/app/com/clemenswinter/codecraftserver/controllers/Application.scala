@@ -32,8 +32,8 @@ class Application @Inject()(
     Ok(Observe()).as("text/html")
   }
 
-  def startGame(maxTicks: Option[Int], actionDelay: Int = 0) = Action {
-    val id = multiplayerServer.startGame(maxTicks, actionDelay)
+  def startGame(maxTicks: Option[Int], actionDelay: Int) = Action {
+    val id = multiplayerServer.startGame(maxTicks)
     Ok(f"""{"id": $id}""").as("application/json")
   }
 
