@@ -72,7 +72,6 @@ class Application @Inject()(
     bb.order(ByteOrder.nativeOrder)
     for (ob <- obs) {
       bb.putFloat(ob.timestep.toFloat / ob.maxGameLength)
-      bb.putFloat(ob.alliedScore.toFloat)
       val drone = ob.alliedDrones(0)
       val x = drone.xPos
       val y = drone.yPos
@@ -95,6 +94,7 @@ class Application @Inject()(
     }
     for (ob <- obs) {
       bb.putFloat(ob.winner.map(_ + 1.0f).getOrElse(0))
+      bb.putFloat(ob.alliedScore.toFloat)
     }
     bb.array()
   }
