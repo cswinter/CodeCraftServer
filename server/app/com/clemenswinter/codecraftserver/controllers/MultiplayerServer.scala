@@ -37,6 +37,7 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
     )
     gameID += 1
     games += gameID -> Game(simulator, Seq(player1))
+    println(f"Started game $gameID. Running games: ${games.size}")
     gameID
   }
 
@@ -50,6 +51,7 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
       if (observation.winner.isDefined) {
         games -= gameID
         completedGames += gameID -> observation
+        println(f"Completed game $gameID. Running games: ${games.size}")
       }
     }
     observation
