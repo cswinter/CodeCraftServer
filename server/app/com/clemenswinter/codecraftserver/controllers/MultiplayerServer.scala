@@ -1,57 +1,88 @@
 package com.clemenswinter.codecraftserver.controllers
 
 import javax.inject.{Inject, Singleton}
-
 import cwinter.codecraft.core.multiplayer._
 import cwinter.codecraft.core.api._
 import cwinter.codecraft.core.game._
 import akka.pattern.ask
 import akka.util.Timeout
+import cwinter.codecraft.util.maths
 import play.api.inject.ApplicationLifecycle
+
 import scala.concurrent.duration._
 import scala.language.postfixOps
+import cwinter.codecraft.util.maths.{Rectangle, Vector2}
 
-import scala.concurrent.{Await, Promise, Future, TimeoutException}
+import scala.concurrent.{Await, Future, Promise, TimeoutException}
+import scala.util.Random
 
 @Singleton
 class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
   println("Starting multiplayer server")
   var gameID = -1
   var games = Map.empty[Int, Game]
-  var completedGames = Map.empty[Int, Observation]
+  var completedGames = Map.empty[(Int, Int), Observation]
   val actorRef = Server.start(maxGames = 20)
   implicit val timeout = Timeout(10 seconds)
   val server = Await
     .result(actorRef ? Server.ScrewThis, 11 seconds)
     .asInstanceOf[cwinter.codecraft.core.multiplayer.MultiplayerServer]
+  val rng = new Random()
 
-  def startGame(maxTicks: Option[Int]): Integer = synchronized {
-    val maxGameLength = maxTicks.getOrElse(3 * 60 * 60)
-    val player1 = new PlayerController(maxGameLength)
-    val simulator = server.startLocalGame(
-      new PassiveDroneController(player1, Promise.successful(DoNothing)),
-      //TheGameMaster.replicatorAI())
-      //TheGameMaster.level1AI(),
-      new AFK(),
-      Seq(DestroyEnemyMotherships, LargestFleet(maxGameLength))
-    )
-    gameID += 1
-    games += gameID -> Game(simulator, Seq(player1))
-    println(f"Started game $gameID. Running games: ${games.size}")
-    gameID
-  }
+  def startGame(maxTicks: Option[Int], scriptedOpponent: Boolean, customMap: Option[MapSettings]): Integer =
+    synchronized {
+      val maxGameLength = maxTicks.getOrElse(3 * 60 * 60)
+      val player1 = new PlayerController(maxGameLength, BluePlayer)
+      val controller1 = new PassiveDroneController(player1, Promise.successful(DoNothing))
+      var player2: Option[PlayerController] = None
+      val controller2 = if (scriptedOpponent) {
+        new AFK()
+      } else {
+        val p2 = new PlayerController(maxGameLength, OrangePlayer)
+        player2 = Some(p2)
+        new PassiveDroneController(p2, Promise.successful(DoNothing))
+      }
+      val winCondition = Seq(DestroyAllEnemies, LargestFleet(maxGameLength))
+      val map = customMap.map(
+        m =>
+          (
+            new Rectangle(m.mapWidth / 2 - m.mapWidth,
+                          m.mapWidth / 2,
+                          m.mapHeight / 2 - m.mapHeight,
+                          m.mapHeight / 2),
+            m.player1Drones.map(_.toSpawn(BluePlayer)) ++ m.player2Drones.map(_.toSpawn(OrangePlayer))
+        )
+      )
+      val simulator = server.startLocalGame(controller1, controller2, winCondition, map)
+      gameID += 1
+      val playerControllers = player2 match {
+        case Some(p2) => Seq(player1, p2)
+        case _ => Seq(player1)
+      }
+      games += gameID -> Game(simulator, playerControllers)
+      println(f"Started game $gameID (${playerControllers.size} players). Running games: ${games.size}")
+      gameID
+    }
+
+  val margin = 50
+  def randomStartPos(size: Rectangle): Vector2 = Vector2(
+    size.xMin + margin + (size.xMax - size.yMin + 2 * margin) * rng.nextFloat(),
+    size.yMin + margin + (size.yMax - size.yMin + 2 * margin) * rng.nextFloat()
+  )
 
   def observe(gameID: Int, playerID: Int): Observation = {
     val game = synchronized {
-      if (completedGames.contains(gameID)) return completedGames(gameID)
+      if (completedGames.contains((gameID, playerID))) return completedGames((gameID, playerID))
       games(gameID)
     }
     val observation = game.externalPlayers(playerID).observe(game.simulator)
     synchronized {
       if (observation.winner.isDefined) {
-        games -= gameID
-        completedGames += gameID -> observation
-        println(f"Completed game $gameID. Running games: ${games.size}")
+        completedGames += (gameID, playerID) -> observation
+        if (game.externalPlayers.size == 1 || completedGames.contains((gameID, 1 - playerID))) {
+          games -= gameID
+          println(f"Completed game $gameID. Running games: ${games.size}")
+        }
       }
     }
     observation
@@ -151,6 +182,12 @@ class PassiveDroneController(
     state.minerals += m
   }
 
+  override def onDroneEntersVision(drone: Drone): Unit = {
+    if (drone.isEnemy) {
+      state.enemyDrones += drone
+    }
+  }
+
   def setAction(action: Action): Unit = {
     nextAction.success(action)
   }
@@ -158,19 +195,20 @@ class PassiveDroneController(
   override def metaController = Some(state)
 }
 
-class PlayerController(val maxGameLength: Int) extends MetaController {
+class PlayerController(val maxGameLength: Int, val player: Player) extends MetaController {
   var alliedDrones: Seq[PassiveDroneController] = Seq.empty
+  var enemyDrones: Set[Drone] = Set.empty
   @volatile var sim: Option[DroneWorldSimulator] = None
   @volatile var observationsReady: Promise[Unit] = Promise()
   var minerals = Set.empty[MineralCrystal]
 
   def observe(sim: DroneWorldSimulator): Observation = {
     Await.ready(observationsReady.future, Duration.Inf)
-
     unsafe_observe(sim)
   }
 
   def unsafe_observe(sim: DroneWorldSimulator): Observation = {
+    val enemyPlayer = if (player == BluePlayer) OrangePlayer else BluePlayer
     Observation(
       sim.timestep,
       maxGameLength,
@@ -192,10 +230,29 @@ class PlayerController(val maxGameLength: Int) extends MetaController {
             d.isConstructing,
             d.isHarvesting
           ),
+      (for {
+        d <- enemyDrones
+        if d.isVisible
+      } yield
+        DroneObservation(
+          d.position.x,
+          d.position.y,
+          d.orientation.toFloat,
+          d.spec.moduleCount,
+          d.storageModules,
+          d.missileBatteries,
+          d.constructors,
+          d.engines,
+          d.shieldGenerators,
+          d.hitpoints,
+          d.storedResources,
+          d.isConstructing,
+          d.isHarvesting
+        )).toSeq,
       for (m <- minerals.toSeq if !m.harvested)
         yield MineralObservation(m.position.x, m.position.y, m.size),
       alliedDrones.toSeq.map(score).sum,
-      0.0
+      sim.dronesFor(enemyPlayer).map(score).sum
     )
   }
 
@@ -204,10 +261,8 @@ class PlayerController(val maxGameLength: Int) extends MetaController {
 
   def act(action: Action): Unit = {
     observationsReady = Promise()
-    for (d <- alliedDrones) {
-      if (d.constructors > 0) d.setAction(action)
-      else d.setAction(DoNothing)
-    }
+    if (alliedDrones.nonEmpty) alliedDrones.head.setAction(action)
+    for (d <- alliedDrones.tail) d.setAction(DoNothing)
   }
 
   override def onTick(): Unit = {
@@ -226,6 +281,7 @@ case class Observation(
   maxGameLength: Int,
   winner: Option[Int],
   alliedDrones: Seq[DroneObservation],
+  enemyDrones: Seq[DroneObservation],
   minerals: Seq[MineralObservation],
   alliedScore: Double,
   enemyScore: Double
@@ -276,4 +332,29 @@ case class GameDebugState(
   winner: Option[Int],
   phase: String,
   observation: Observation
+)
+
+case class StartingDrone(
+  xPos: Float,
+  yPos: Float,
+  resources: Int = 0,
+  storageModules: Int = 0,
+  missileBatteries: Int = 0,
+  constructors: Int = 0,
+  engines: Int = 0,
+  shieldGenerators: Int = 0
+) {
+  def toSpawn(player: Player): Spawn = Spawn(
+    DroneSpec(storageModules, missileBatteries, constructors, engines, shieldGenerators),
+    Vector2(xPos, yPos),
+    player,
+    resources
+  )
+}
+
+case class MapSettings(
+  mapWidth: Int,
+  mapHeight: Int,
+  player1Drones: Seq[StartingDrone],
+  player2Drones: Seq[StartingDrone]
 )
