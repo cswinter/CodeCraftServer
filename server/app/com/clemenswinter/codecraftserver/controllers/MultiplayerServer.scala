@@ -213,7 +213,7 @@ class PlayerController(val maxGameLength: Int, val player: Player) extends MetaC
       sim.timestep,
       maxGameLength,
       sim.winner.map(_.id),
-      for (d <- alliedDrones)
+      for (d <- alliedDrones if !d.isDead)
         yield
           DroneObservation(
             d.position.x,
@@ -251,13 +251,17 @@ class PlayerController(val maxGameLength: Int, val player: Player) extends MetaC
         )).toSeq,
       for (m <- minerals.toSeq if !m.harvested)
         yield MineralObservation(m.position.x, m.position.y, m.size),
-      alliedDrones.toSeq.map(score).sum,
+      alliedDrones.toSeq
+        .filter(!_.isDead)
+        .map(score)
+        .sum, // TODO: why doesn't dead drone get removed? (maybe one tick too late?)
       sim.dronesFor(enemyPlayer).map(score).sum
     )
   }
 
-  def score(drone: Drone): Double =
+  def score(drone: Drone): Double = {
     drone.spec.resourceCost * (drone.hitpoints / drone.maxHitpoints.toDouble + 1.0)
+  }
 
   def act(action: Action): Unit = {
     observationsReady = Promise()

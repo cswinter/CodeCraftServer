@@ -86,22 +86,27 @@ class Application @Inject()(
       bb.putFloat(ob.timestep.toFloat / ob.maxGameLength)
 
       // Allied drone
-      val drone = ob.alliedDrones(0)
-      val x = drone.xPos
-      val y = drone.yPos
-      bb.putFloat(x / 1000.0f)
-      bb.putFloat(y / 1000.0f)
-      bb.putFloat(math.sin(drone.orientation).toFloat)
-      bb.putFloat(math.cos(drone.orientation).toFloat)
-      bb.putFloat(drone.storedResources / 50.0f)
-      bb.putFloat(if (drone.isConstructing) 1.0f else -1.0f)
-      bb.putFloat(if (drone.isHarvesting) 1.0f else -1.0f)
-      bb.putFloat(0.1f * drone.hitpoints)
-      bb.putFloat(0.5f * drone.storageModules)
-      bb.putFloat(0.5f * drone.missileBatteries)
-      bb.putFloat(0.5f * drone.constructors)
-      bb.putFloat(0.5f * drone.engines)
-      bb.putFloat(0.5f * drone.shieldGenerators)
+      var x = 0.0f
+      var y = 0.0f
+      ob.alliedDrones.headOption match {
+        case Some(drone) =>
+          x = drone.xPos
+          y = drone.yPos
+          bb.putFloat(x / 1000.0f)
+          bb.putFloat(y / 1000.0f)
+          bb.putFloat(math.sin(drone.orientation).toFloat)
+          bb.putFloat(math.cos(drone.orientation).toFloat)
+          bb.putFloat(drone.storedResources / 50.0f)
+          bb.putFloat(if (drone.isConstructing) 1.0f else -1.0f)
+          bb.putFloat(if (drone.isHarvesting) 1.0f else -1.0f)
+          bb.putFloat(0.1f * drone.hitpoints)
+          bb.putFloat(0.5f * drone.storageModules)
+          bb.putFloat(0.5f * drone.missileBatteries)
+          bb.putFloat(0.5f * drone.constructors)
+          bb.putFloat(0.5f * drone.engines)
+          bb.putFloat(0.5f * drone.shieldGenerators)
+        case None => for (_ <- 0 until droneProperties) bb.putFloat(0.0f)
+      }
 
       // 10 closest minerals
       for (m <- ob.minerals.sortBy(m => (m.xPos * m.xPos + m.yPos * m.yPos) / m.size).take(10)) {
@@ -110,16 +115,14 @@ class Application @Inject()(
         bb.putFloat(math.sqrt((m.yPos - y) * (m.yPos - y) + (m.xPos - x) * (m.xPos - x)).toFloat / 1000.0f)
         bb.putFloat(m.size / 100.0f)
       }
-      for (m <- 0 until (10 - ob.minerals.size) * 4) {
+      for (_ <- 0 until (10 - ob.minerals.size) * 4) {
         bb.putFloat(0.0f)
       }
 
       // 10 closest enemy drones
-      for (m <- ob.enemyDrones.sortBy(m => (m.xPos * m.xPos + m.yPos * m.yPos) / m.size).take(10)) {
-        val x = drone.xPos
-        val y = drone.yPos
-        bb.putFloat(x / 1000.0f)
-        bb.putFloat(y / 1000.0f)
+      for (drone <- ob.enemyDrones.sortBy(m => (m.xPos * m.xPos + m.yPos * m.yPos) / m.size).take(10)) {
+        bb.putFloat((drone.xPos - x) / 1000.0f)
+        bb.putFloat((drone.yPos - y) / 1000.0f)
         bb.putFloat(math.sin(drone.orientation).toFloat)
         bb.putFloat(math.cos(drone.orientation).toFloat)
         bb.putFloat(drone.storedResources / 50.0f)
@@ -132,7 +135,7 @@ class Application @Inject()(
         bb.putFloat(0.5f * drone.engines)
         bb.putFloat(0.5f * drone.shieldGenerators)
       }
-      for (m <- 0 until (10 - ob.enemyDrones.size) * droneProperties) {
+      for (_ <- 0 until (10 - ob.enemyDrones.size) * droneProperties) {
         bb.putFloat(0.0f)
       }
     }
