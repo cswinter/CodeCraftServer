@@ -31,16 +31,19 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
 
   def startGame(maxTicks: Option[Int], scriptedOpponent: Boolean, customMap: Option[MapSettings]): Integer =
     synchronized {
+      val initialDrones = customMap.map(m => (m.player1Drones.size, m.player2Drones.size)).getOrElse((1, 1))
       val maxGameLength = maxTicks.getOrElse(3 * 60 * 60)
       val player1 = new PlayerController(maxGameLength, BluePlayer)
-      val controller1 = new PassiveDroneController(player1, Promise.successful(DoNothing))
+      var controllers: Seq[DroneControllerBase] =
+        Seq.fill(initialDrones._1)(new PassiveDroneController(player1, Promise.successful(DoNothing)))
       var player2: Option[PlayerController] = None
-      val controller2 = if (scriptedOpponent) {
-        new AFK()
+      if (scriptedOpponent) {
+        controllers ++= Seq.fill(initialDrones._2)(new AFK())
       } else {
         val p2 = new PlayerController(maxGameLength, OrangePlayer)
         player2 = Some(p2)
-        new PassiveDroneController(p2, Promise.successful(DoNothing))
+        controllers ++= Seq.fill(initialDrones._2)(
+          new PassiveDroneController(p2, Promise.successful(DoNothing)))
       }
       val winCondition = Seq(DestroyAllEnemies, LargestFleet(maxGameLength))
       val map = customMap.map(
@@ -50,10 +53,12 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
                           m.mapWidth / 2,
                           m.mapHeight / 2 - m.mapHeight,
                           m.mapHeight / 2),
-            m.player1Drones.map(_.toSpawn(BluePlayer)) ++ m.player2Drones.map(_.toSpawn(OrangePlayer))
+            m.player1Drones.map(_.toSpawn(BluePlayer)) ++ m.player2Drones.map(_.toSpawn(OrangePlayer)),
+            // Seq.fill(5)((10, 25))
+            Seq.fill(1)((2, 10))
         )
       )
-      val simulator = server.startLocalGame(controller1, controller2, winCondition, map)
+      val simulator = server.startLocalGame(controllers, winCondition, map)
       gameID += 1
       val playerControllers = player2 match {
         case Some(p2) => Seq(player1, p2)
@@ -88,10 +93,10 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
     observation
   }
 
-  def act(gameID: Int, playerID: Int, action: Action): Unit = synchronized {
+  def act(gameID: Int, playerID: Int, actions: Seq[Action]): Unit = synchronized {
     val game = games(gameID)
     if (game.simulator.winner.isDefined) return
-    game.externalPlayers(playerID).act(action)
+    game.externalPlayers(playerID).act(actions)
   }
 
   def debugState(): Seq[GameDebugState] = {
@@ -263,10 +268,12 @@ class PlayerController(val maxGameLength: Int, val player: Player) extends MetaC
     drone.spec.resourceCost * (drone.hitpoints / drone.maxHitpoints.toDouble + 1.0)
   }
 
-  def act(action: Action): Unit = {
+  def act(actions: Seq[Action]): Unit = {
     observationsReady = Promise()
-    if (alliedDrones.nonEmpty) alliedDrones.head.setAction(action)
-    for (d <- alliedDrones.tail) d.setAction(DoNothing)
+    for ((d, i) <- alliedDrones.zipWithIndex) {
+      val action = if (i < actions.size) actions(i) else DoNothing
+      d.setAction(action)
+    }
   }
 
   override def onTick(): Unit = {
