@@ -80,14 +80,15 @@ class Application @Inject()(
   }
 
   def serializeObs(obs: Seq[Observation], obsConfig: ObsConfig): Array[Byte] = {
-    val droneProperties = 14
+    val droneProperties = 15
     val mineralProperties = 4
     val globals = 1
     val extras = 3
-    val agentObs = (globals + droneProperties) * obsConfig.allies +
+    val agentObs = globals + droneProperties +
       mineralProperties * obsConfig.minerals +
       droneProperties * obsConfig.drones
-    val nums = obs.length * (obsConfig.allies * agentObs + extras)
+    val actionMasks = obsConfig.allies * 8
+    val nums = obs.length * (obsConfig.allies * agentObs + extras + actionMasks)
     val bb: ByteBuffer = ByteBuffer.allocate(4 * nums)
     bb.order(ByteOrder.nativeOrder)
     for (ob <- obs) {
@@ -115,6 +116,7 @@ class Application @Inject()(
           bb.putFloat(0.5f * drone.constructors)
           bb.putFloat(0.5f * drone.engines)
           bb.putFloat(0.5f * drone.shieldGenerators)
+          bb.putFloat(if (drone.isStunned) 1.0f else -1.0f)
           bb.putFloat(1.0f)
         }
       }
@@ -164,6 +166,7 @@ class Application @Inject()(
             bb.putFloat(0.5f * drone.constructors)
             bb.putFloat(0.5f * drone.engines)
             bb.putFloat(0.5f * drone.shieldGenerators)
+            bb.putFloat(if (drone.isStunned) 1.0f else -1.0f)
             bb.putFloat(if (isEnemy) -1.0f else 1.0f)
           }
           for (_ <- 0 until (11 - allDrones.size) * droneProperties) {
@@ -178,8 +181,30 @@ class Application @Inject()(
       bb.putFloat(ob.alliedScore.toFloat)
       bb.putFloat(ob.enemyScore.toFloat)
     }
+
+    for (ob <- obs) {
+      for (i <- 0 until obsConfig.allies) {
+        if (ob.alliedDrones.size <= i) {
+          for (_ <- 0 until 8) bb.putFloat(0.0f)
+        } else {
+          val drone = ob.alliedDrones(i)
+          // 0-5: turn/movement (4 is no turn, no movement)
+          // 6: build [0,1,0,0,0] drone (if minerals > 5)
+          // 7: harvest
+          val stunned = if (drone.isStunned) 0.0f else 1.0f
+          for (_ <- 0 until 6) bb.putFloat(stunned)
+          val canConstruct =
+            if (drone.constructors > 0 && drone.storedResources >= 5 && !drone.isConstructing) 1.0f
+            else 0.0f
+          bb.putFloat(canConstruct)
+          // TODO: harvest action
+          bb.putFloat(0.0f)
+        }
+      }
+    }
+
+    assert(bb.position() == 4 * nums, f"Expected ${4 * nums} elements, actual: ${bb.position()}")
     val result = bb.array()
-    assert(result.length == 4 * nums, f"Expected $nums elements, actual: ${result.length}")
     result
   }
 

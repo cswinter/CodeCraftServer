@@ -233,7 +233,8 @@ class PlayerController(val maxGameLength: Int, val player: Player) extends MetaC
             d.hitpoints,
             d.storedResources,
             d.isConstructing,
-            d.isHarvesting
+            d.isHarvesting,
+            d.isStunned
           ),
       (for {
         d <- enemyDrones
@@ -252,7 +253,8 @@ class PlayerController(val maxGameLength: Int, val player: Player) extends MetaC
           d.hitpoints,
           d.storedResources,
           d.isConstructing,
-          d.isHarvesting
+          d.isHarvesting,
+          d.isStunned
         )).toSeq,
       for (m <- minerals.toSeq if !m.harvested)
         yield MineralObservation(m.position.x, m.position.y, m.size),
@@ -311,7 +313,8 @@ case class DroneObservation(
   hitpoints: Int,
   storedResources: Int,
   isConstructing: Boolean,
-  isHarvesting: Boolean
+  isHarvesting: Boolean,
+  isStunned: Boolean
 )
 
 case class MineralObservation(
