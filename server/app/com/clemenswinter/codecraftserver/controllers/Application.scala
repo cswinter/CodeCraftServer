@@ -128,15 +128,16 @@ class Application @Inject()(
           val drone = ob.alliedDrones(i)
           val x = drone.xPos
           val y = drone.yPos
-          // 10 closest minerals
-          for (m <- ob.minerals.sortBy(m => (m.xPos * m.xPos + m.yPos * m.yPos) / m.size).take(10)) {
+          for (m <- ob.minerals
+                 .sortBy(m => (m.xPos * m.xPos + m.yPos * m.yPos) / m.size)
+                 .take(obsConfig.minerals)) {
             bb.putFloat((m.xPos - x) / 1000.0f)
             bb.putFloat((m.yPos - y) / 1000.0f)
             bb.putFloat(
               math.sqrt((m.yPos - y) * (m.yPos - y) + (m.xPos - x) * (m.xPos - x)).toFloat / 1000.0f)
             bb.putFloat(m.size / 100.0f)
           }
-          for (_ <- 0 until (10 - ob.minerals.size) * mineralProperties) {
+          for (_ <- 0 until (obsConfig.minerals - ob.minerals.size) * mineralProperties) {
             bb.putFloat(0.0f)
           }
         }
@@ -151,8 +152,7 @@ class Application @Inject()(
           val y = drone.yPos
           val dronesSorted =
             allDrones.sortBy(d => (d._1.xPos - x) * (d._1.xPos - x) + (d._1.yPos - y) * (d._1.yPos - y))
-          // 10 closest drones
-          for ((drone, isEnemy) <- dronesSorted.slice(1, 11)) {
+          for ((drone, isEnemy) <- dronesSorted.slice(1, obsConfig.drones + 1)) {
             bb.putFloat((drone.xPos - x) / 1000.0f)
             bb.putFloat((drone.yPos - y) / 1000.0f)
             bb.putFloat(math.sin(drone.orientation).toFloat)
@@ -169,7 +169,7 @@ class Application @Inject()(
             bb.putFloat(if (drone.isStunned) 1.0f else -1.0f)
             bb.putFloat(if (isEnemy) -1.0f else 1.0f)
           }
-          for (_ <- 0 until (11 - allDrones.size) * droneProperties) {
+          for (_ <- 0 until (obsConfig.drones + 1 - allDrones.size) * droneProperties) {
             bb.putFloat(0.0f)
           }
         }
@@ -182,6 +182,7 @@ class Application @Inject()(
       bb.putFloat(ob.enemyScore.toFloat)
     }
 
+    // Action masks
     for (ob <- obs) {
       for (i <- 0 until obsConfig.allies) {
         if (ob.alliedDrones.size <= i) {
