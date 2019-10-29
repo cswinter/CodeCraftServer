@@ -219,43 +219,14 @@ class PlayerController(val maxGameLength: Int, val player: Player) extends MetaC
       maxGameLength,
       sim.winner.map(_.id),
       for (d <- alliedDrones if !d.isDead)
-        yield
-          DroneObservation(
-            d.position.x,
-            d.position.y,
-            d.orientation.toFloat,
-            d.spec.moduleCount,
-            d.storageModules,
-            d.missileBatteries,
-            d.constructors,
-            d.engines,
-            d.shieldGenerators,
-            d.hitpoints,
-            d.storedResources,
-            d.isConstructing,
-            d.isHarvesting,
-            d.isStunned
-          ),
+        yield DroneObservation(d),
       (for {
         d <- enemyDrones
         if d.isVisible
-      } yield
-        DroneObservation(
-          d.position.x,
-          d.position.y,
-          d.orientation.toFloat,
-          d.spec.moduleCount,
-          d.storageModules,
-          d.missileBatteries,
-          d.constructors,
-          d.engines,
-          d.shieldGenerators,
-          d.hitpoints,
-          d.storedResources,
-          d.isConstructing,
-          d.isHarvesting,
-          d.isStunned
-        )).toSeq,
+      } yield DroneObservation(d)).toSeq,
+      for {
+        d <- sim.dronesFor(enemyPlayer)
+      } yield DroneObservation(d),
       for (m <- minerals.toSeq if !m.harvested)
         yield MineralObservation(m.position.x, m.position.y, m.size),
       alliedDrones.toSeq
@@ -294,7 +265,8 @@ case class Observation(
   maxGameLength: Int,
   winner: Option[Int],
   alliedDrones: Seq[DroneObservation],
-  enemyDrones: Seq[DroneObservation],
+  visibleEnemyDrones: Seq[DroneObservation],
+  allEnemyDrones: Seq[DroneObservation],
   minerals: Seq[MineralObservation],
   alliedScore: Double,
   enemyScore: Double
@@ -316,6 +288,27 @@ case class DroneObservation(
   isHarvesting: Boolean,
   isStunned: Boolean
 )
+
+object DroneObservation {
+  def apply(d: Drone): DroneObservation = {
+    DroneObservation(
+      d.position.x,
+      d.position.y,
+      d.orientation.toFloat,
+      d.spec.moduleCount,
+      d.storageModules,
+      d.missileBatteries,
+      d.constructors,
+      d.engines,
+      d.shieldGenerators,
+      d.hitpoints,
+      d.storedResources,
+      d.isConstructing,
+      d.isHarvesting,
+      d.isStunned
+    )
+  }
+}
 
 case class MineralObservation(
   xPos: Float,
