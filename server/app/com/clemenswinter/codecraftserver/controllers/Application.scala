@@ -194,8 +194,8 @@ class Application @Inject()(
           // 0-5: turn/movement (4 is no turn, no movement)
           // 6: build [0,1,0,0,0] drone (if minerals > 5)
           // 7: harvest
-          val stunned = if (drone.isStunned) 0.0f else 1.0f
-          for (_ <- 0 until 6) bb.putFloat(stunned)
+          val canMove = if (drone.isStunned || drone.isConstructing) 0.0f else 1.0f
+          for (_ <- 0 until 6) bb.putFloat(canMove)
           val canConstruct =
             if (drone.constructors > 0 && drone.storedResources >= 5 && !drone.isConstructing) 1.0f
             else 0.0f
