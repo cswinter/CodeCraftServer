@@ -33,14 +33,14 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
     synchronized {
       val initialDrones = customMap.map(m => (m.player1Drones.size, m.player2Drones.size)).getOrElse((1, 1))
       val maxGameLength = maxTicks.getOrElse(3 * 60 * 60)
-      val player1 = new PlayerController(maxGameLength, BluePlayer)
+      val player1 = new PlayerController(maxGameLength, BluePlayer, gameID + 1)
       var controllers: Seq[DroneControllerBase] =
         Seq.fill(initialDrones._1)(new PassiveDroneController(player1, Promise.successful(DoNothing)))
       var player2: Option[PlayerController] = None
       if (scriptedOpponent) {
         controllers ++= Seq.fill(initialDrones._2)(new AFK())
       } else {
-        val p2 = new PlayerController(maxGameLength, OrangePlayer)
+        val p2 = new PlayerController(maxGameLength, OrangePlayer, gameID + 1)
         player2 = Some(p2)
         controllers ++= Seq.fill(initialDrones._2)(
           new PassiveDroneController(p2, Promise.successful(DoNothing)))
@@ -54,8 +54,7 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
                           m.mapHeight / 2 - m.mapHeight,
                           m.mapHeight / 2),
             m.player1Drones.map(_.toSpawn(BluePlayer)) ++ m.player2Drones.map(_.toSpawn(OrangePlayer)),
-            // Seq.fill(5)((10, 25))
-            Seq.fill(1)((2, 10))
+            m.minerals
         )
       )
       val simulator = server.startLocalGame(controllers, winCondition, map)
@@ -86,7 +85,6 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
         completedGames += (gameID, playerID) -> observation
         if (game.externalPlayers.size == 1 || completedGames.contains((gameID, 1 - playerID))) {
           games -= gameID
-          println(f"Completed game $gameID. Running games: ${games.size}")
         }
       }
     }
@@ -125,7 +123,7 @@ class AFK extends DroneController
 
 class PassiveDroneController(
   var state: PlayerController,
-  var nextAction: Promise[Action] = Promise()
+  @volatile var nextAction: Promise[Action] = Promise()
 ) extends DroneController {
   override def onTick(): Unit = {
     if (missileCooldown == 0 && enemiesInSight.nonEmpty) {
@@ -200,7 +198,7 @@ class PassiveDroneController(
   override def metaController = Some(state)
 }
 
-class PlayerController(val maxGameLength: Int, val player: Player) extends MetaController {
+class PlayerController(val maxGameLength: Int, val player: Player, val gameID: Int) extends MetaController {
   var alliedDrones: Seq[PassiveDroneController] = Seq.empty
   var enemyDrones: Set[Drone] = Set.empty
   @volatile var sim: Option[DroneWorldSimulator] = None
@@ -363,5 +361,6 @@ case class MapSettings(
   mapWidth: Int,
   mapHeight: Int,
   player1Drones: Seq[StartingDrone],
-  player2Drones: Seq[StartingDrone]
+  player2Drones: Seq[StartingDrone],
+  minerals: Seq[(Int, Int)]
 )
