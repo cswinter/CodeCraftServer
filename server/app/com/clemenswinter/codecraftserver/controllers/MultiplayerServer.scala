@@ -125,12 +125,15 @@ class PassiveDroneController(
   var state: PlayerController,
   @volatile var nextAction: Promise[Action] = Promise()
 ) extends DroneController {
+  val id: Int = state.nextID()
+
   override def onTick(): Unit = {
     if (missileCooldown == 0 && enemiesInSight.nonEmpty) {
       val closest = enemiesInSight.minBy(enemy => (enemy.position - position).lengthSquared)
       if (isInMissileRange(closest)) fireMissilesAt(closest)
     }
     val action = try {
+      println(f"[${state.gameID}, ${state.player}] $id Waiting for action (=${this.hitpoints})")
       Await.result(nextAction.future, Duration.Inf) // 60 seconds)
     } catch {
       case e: TimeoutException => {
@@ -138,6 +141,7 @@ class PassiveDroneController(
         DoNothing
       }
     }
+    println(f"[${state.gameID}, ${state.player}] $id Obtained action (hitpoints=${this.hitpoints})")
 
     for (spec <- action.buildDrone) {
       val droneSpec = DroneSpec(spec(0), spec(1), spec(2), spec(3), spec(4))
@@ -170,6 +174,7 @@ class PassiveDroneController(
       giveResourcesTo(closest)
     }
 
+    println(f"[${state.gameID}, ${state.player}] $id Resetting action promise (hitpoints=${this.hitpoints})")
     nextAction = Promise()
   }
 
@@ -199,14 +204,17 @@ class PassiveDroneController(
 }
 
 class PlayerController(val maxGameLength: Int, val player: Player, val gameID: Int) extends MetaController {
-  var alliedDrones: Seq[PassiveDroneController] = Seq.empty
-  var enemyDrones: Set[Drone] = Set.empty
+  @volatile var alliedDrones: Seq[PassiveDroneController] = Seq.empty
+  @volatile var enemyDrones: Set[Drone] = Set.empty
   @volatile var sim: Option[DroneWorldSimulator] = None
   @volatile var observationsReady: Promise[Unit] = Promise()
-  var minerals = Set.empty[MineralCrystal]
+  @volatile var minerals = Set.empty[MineralCrystal]
+  var dronecount = 0
 
   def observe(sim: DroneWorldSimulator): Observation = {
+    println(f"[$gameID, $player] Awaiting obs")
     Await.ready(observationsReady.future, Duration.Inf)
+    println(f"[$gameID, $player] Obs ready")
     unsafe_observe(sim)
   }
 
@@ -242,13 +250,17 @@ class PlayerController(val maxGameLength: Int, val player: Player, val gameID: I
   def act(actions: Seq[Action]): Unit = {
     observationsReady = Promise()
     for ((d, i) <- alliedDrones.zipWithIndex) {
+      println(f"[$gameID, $player] set action on ${d.id}")
       val action = if (i < actions.size) actions(i) else DoNothing
       d.setAction(action)
     }
   }
 
   override def onTick(): Unit = {
-    if (!observationsReady.isCompleted) observationsReady.success(())
+    if (!observationsReady.isCompleted) {
+      println(f"[$gameID, $player] marking observation ready")
+      observationsReady.success(())
+    }
   }
 
   override def gameOver(winner: Player): Unit = {
@@ -256,6 +268,8 @@ class PlayerController(val maxGameLength: Int, val player: Player, val gameID: I
       observationsReady.success(())
     }
   }
+
+  def nextID(): Int = { dronecount += 1; dronecount }
 }
 
 case class Observation(
