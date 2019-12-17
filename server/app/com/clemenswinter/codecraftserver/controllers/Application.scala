@@ -43,18 +43,21 @@ class Application @Inject()(
   }
 
   def act(gameID: Int, playerID: Int) = Action { implicit request =>
+    println(f"act $gameID $playerID")
     val action = read[Action](request.body.asJson.get.toString)
     multiplayerServer.act(gameID, playerID, Seq(action))
     Ok("success").as("application/json")
   }
 
   def playerState(gameID: Int, playerID: Int) = Action {
+    println(f"state $gameID $playerID")
     val payload = multiplayerServer.observe(gameID, playerID)
     Ok(write(payload)).as("application/json")
   }
 
   def batchAct() = Action { implicit request =>
     val actions = read[Map[String, Seq[Action]]](request.body.asJson.get.toString)
+    println("Batch act")
     for ((gameID, action) <- actions) {
       val (gid, pid) = if (gameID.contains('.')) {
         val parts = gameID.split('.')
@@ -69,6 +72,7 @@ class Application @Inject()(
 
   def batchPlayerState(json: Boolean, allies: Int, drones: Int, minerals: Int, globalDrones: Int) = Action {
     implicit request =>
+      println("Batch state")
       val obsConfig = ObsConfig(allies, drones, minerals, globalDrones)
       val games = read[Seq[(Int, Int)]](request.body.asJson.get.toString)
       val payload: Seq[Observation] = for ((gameID, playerID) <- games)

@@ -214,8 +214,9 @@ class PlayerController(val maxGameLength: Int, val player: Player, val gameID: I
   def observe(sim: DroneWorldSimulator): Observation = {
     println(f"[$gameID, $player] Awaiting obs")
     Await.ready(observationsReady.future, Duration.Inf)
-    println(f"[$gameID, $player] Obs ready")
-    unsafe_observe(sim)
+    val obs = unsafe_observe(sim)
+    println(f"[$gameID, $player] Returning obs for timestep ${obs.timestep}")
+    obs
   }
 
   def unsafe_observe(sim: DroneWorldSimulator): Observation = {
