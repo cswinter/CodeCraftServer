@@ -197,7 +197,10 @@ class PassiveDroneController(
   }
 
   def setAction(action: Action): Unit = {
-    nextAction.success(action)
+    // WORKAROUND, probably needed because of a race for drone spawn events.
+    if (!nextAction.isCompleted) {
+      nextAction.success(action)
+    }
   }
 
   override def metaController = Some(state)
