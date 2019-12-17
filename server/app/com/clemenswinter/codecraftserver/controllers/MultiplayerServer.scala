@@ -54,7 +54,8 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
                           m.mapHeight / 2 - m.mapHeight,
                           m.mapHeight / 2),
             m.player1Drones.map(_.toSpawn(BluePlayer)) ++ m.player2Drones.map(_.toSpawn(OrangePlayer)),
-            m.minerals
+            m.minerals,
+            m.symmetric
         )
       )
       val simulator = server.startLocalGame(controllers, winCondition, map)
@@ -379,5 +380,6 @@ case class MapSettings(
   mapHeight: Int,
   player1Drones: Seq[StartingDrone],
   player2Drones: Seq[StartingDrone],
-  minerals: Seq[(Int, Int)]
+  minerals: Seq[(Int, Int)],
+  symmetric: Boolean
 )
