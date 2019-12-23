@@ -8,7 +8,7 @@ GET        /observe                                com.clemenswinter.codecraftse
 POST       /start-game                             com.clemenswinter.codecraftserver.controllers.Application.startGame(maxTicks: Option[Int], actionDelay: Int ?= 0, scriptedOpponent: Boolean ?= true)
 GET        /observation                            com.clemenswinter.codecraftserver.controllers.Application.playerState(gameID: Int, playerID: Int)
 POST       /act                                    com.clemenswinter.codecraftserver.controllers.Application.act(gameID: Int, playerID: Int)
-GET        /batch-observation                      com.clemenswinter.codecraftserver.controllers.Application.batchPlayerState(json: Boolean ?= true, allies: Int ?= 1, drones: Int ?= 10, minerals: Int ?= 10, globalDrones: Int ?= 0)
+GET        /batch-observation                      com.clemenswinter.codecraftserver.controllers.Application.batchPlayerState(json: Boolean ?= true, allies: Int ?= 1, drones: Int ?= 10, minerals: Int ?= 10, globalDrones: Int ?= 0, relativePositions: Boolean ?= true)
 POST       /batch-act                              com.clemenswinter.codecraftserver.controllers.Application.batchAct()
 
 GET        /ajax/multiplayerServerStatus           com.clemenswinter.codecraftserver.controllers.Application.mpssJson

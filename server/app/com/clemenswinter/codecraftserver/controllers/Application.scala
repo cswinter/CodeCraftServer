@@ -18,7 +18,7 @@ import scala.util.Try
 import scala.concurrent.ExecutionContext.Implicits.global
 import upickle.default._
 
-case class ObsConfig(allies: Int, drones: Int, minerals: Int, globalDrones: Int)
+case class ObsConfig(allies: Int, drones: Int, minerals: Int, globalDrones: Int, relativePositions: Boolean)
 
 @Singleton
 class Application @Inject()(
@@ -67,9 +67,9 @@ class Application @Inject()(
     Ok("success").as("application/json")
   }
 
-  def batchPlayerState(json: Boolean, allies: Int, drones: Int, minerals: Int, globalDrones: Int) = Action {
+  def batchPlayerState(json: Boolean, allies: Int, drones: Int, minerals: Int, globalDrones: Int, relativePositions: Boolean) = Action {
     implicit request =>
-      val obsConfig = ObsConfig(allies, drones, minerals, globalDrones)
+      val obsConfig = ObsConfig(allies, drones, minerals, globalDrones, relativePositions)
       val games = read[Seq[(Int, Int)]](request.body.asJson.get.toString)
       val payload: Seq[Observation] = for ((gameID, playerID) <- games)
         yield multiplayerServer.observe(gameID, playerID)
@@ -103,10 +103,10 @@ class Application @Inject()(
           // Time
           bb.putFloat(ob.timestep.toFloat / ob.maxGameLength)
           // Allied drone
-          val x = drone.xPos
-          val y = drone.yPos
-          bb.putFloat(x / 1000.0f)
-          bb.putFloat(y / 1000.0f)
+          val x_offset = if (obsConfig.relativePositions) drone.xPos else 0.0f
+          val y_offset = if (obsConfig.relativePositions) drone.yPos else 0.0f
+          bb.putFloat(x_offset / 1000.0f)
+          bb.putFloat(y_offset / 1000.0f)
           bb.putFloat(math.sin(drone.orientation).toFloat)
           bb.putFloat(math.cos(drone.orientation).toFloat)
           bb.putFloat(drone.storedResources / 50.0f)
@@ -128,15 +128,15 @@ class Application @Inject()(
           for (_ <- 0 until obsConfig.minerals * mineralProperties) bb.putFloat(0.0f)
         } else {
           val drone = ob.alliedDrones(i)
-          val x = drone.xPos
-          val y = drone.yPos
+          val x_offset = if (obsConfig.relativePositions) drone.xPos else 0.0f
+          val y_offset = if (obsConfig.relativePositions) drone.yPos else 0.0f
           for (m <- ob.minerals
                  .sortBy(m => (m.xPos * m.xPos + m.yPos * m.yPos) / m.size)
                  .take(obsConfig.minerals)) {
-            bb.putFloat((m.xPos - x) / 1000.0f)
-            bb.putFloat((m.yPos - y) / 1000.0f)
+            bb.putFloat((m.xPos - x_offset) / 1000.0f)
+            bb.putFloat((m.yPos - y_offset) / 1000.0f)
             bb.putFloat(
-              math.sqrt((m.yPos - y) * (m.yPos - y) + (m.xPos - x) * (m.xPos - x)).toFloat / 1000.0f)
+              math.sqrt((m.yPos - y_offset) * (m.yPos - y_offset) + (m.xPos - x_offset) * (m.xPos - x_offset)).toFloat / 1000.0f)
             bb.putFloat(m.size / 100.0f)
           }
           for (_ <- 0 until (obsConfig.minerals - ob.minerals.size) * mineralProperties) {
@@ -150,13 +150,13 @@ class Application @Inject()(
           for (_ <- 0 until obsConfig.drones * droneProperties) bb.putFloat(0.0f)
         } else {
           val drone = ob.alliedDrones(i)
-          val x = drone.xPos
-          val y = drone.yPos
+          val x_offset = if (obsConfig.relativePositions) drone.xPos else 0.0f
+          val y_offset = if (obsConfig.relativePositions) drone.yPos else 0.0f
           val dronesSorted =
-            allDrones.sortBy(d => (d._1.xPos - x) * (d._1.xPos - x) + (d._1.yPos - y) * (d._1.yPos - y))
+            allDrones.sortBy(d => (d._1.xPos - x_offset) * (d._1.xPos - x_offset) + (d._1.yPos - y_offset) * (d._1.yPos - y_offset))
           for ((drone, isEnemy) <- dronesSorted.slice(1, obsConfig.drones + 1)) {
-            bb.putFloat((drone.xPos - x) / 1000.0f)
-            bb.putFloat((drone.yPos - y) / 1000.0f)
+            bb.putFloat((drone.xPos - x_offset) / 1000.0f)
+            bb.putFloat((drone.yPos - y_offset) / 1000.0f)
             bb.putFloat(math.sin(drone.orientation).toFloat)
             bb.putFloat(math.cos(drone.orientation).toFloat)
             bb.putFloat(drone.storedResources / 50.0f)
