@@ -134,7 +134,7 @@ class PassiveDroneController(
       if (isInMissileRange(closest)) fireMissilesAt(closest)
     }
     val action = try {
-      println(f"[${state.gameID}, ${state.player}] $id Waiting for action (=${this.hitpoints})")
+      Log.debug(f"[${state.gameID}, ${state.player}] $id Waiting for action (=${this.hitpoints})")
       Await.result(nextAction.future, Duration.Inf) // 60 seconds)
     } catch {
       case e: TimeoutException => {
@@ -142,7 +142,7 @@ class PassiveDroneController(
         DoNothing
       }
     }
-    println(f"[${state.gameID}, ${state.player}] $id Obtained action (hitpoints=${this.hitpoints})")
+    Log.debug(f"[${state.gameID}, ${state.player}] $id Obtained action (hitpoints=${this.hitpoints})")
 
     for (spec <- action.buildDrone) {
       val droneSpec = DroneSpec(spec(0), spec(1), spec(2), spec(3), spec(4))
@@ -175,7 +175,7 @@ class PassiveDroneController(
       giveResourcesTo(closest)
     }
 
-    println(f"[${state.gameID}, ${state.player}] $id Resetting action promise (hitpoints=${this.hitpoints})")
+    Log.debug(f"[${state.gameID}, ${state.player}] $id Resetting action promise (hitpoints=${this.hitpoints})")
     nextAction = Promise()
   }
 
@@ -216,9 +216,9 @@ class PlayerController(val maxGameLength: Int, val player: Player, val gameID: I
   var dronecount = 0
 
   def observe(sim: DroneWorldSimulator): Observation = {
-    println(f"[$gameID, $player] Awaiting obs")
+    Log.debug(f"[$gameID, $player] Awaiting obs")
     Await.ready(observationsReady.future, Duration.Inf)
-    println(f"[$gameID, $player] Obs ready")
+    Log.debug(f"[$gameID, $player] Obs ready")
     unsafe_observe(sim)
   }
 
@@ -254,7 +254,7 @@ class PlayerController(val maxGameLength: Int, val player: Player, val gameID: I
   def act(actions: Seq[Action]): Unit = {
     observationsReady = Promise()
     for ((d, i) <- alliedDrones.zipWithIndex) {
-      println(f"[$gameID, $player] set action on ${d.id}")
+      Log.debug(f"[$gameID, $player] set action on ${d.id}")
       val action = if (i < actions.size) actions(i) else DoNothing
       d.setAction(action)
     }
@@ -262,7 +262,7 @@ class PlayerController(val maxGameLength: Int, val player: Player, val gameID: I
 
   override def onTick(): Unit = {
     if (!observationsReady.isCompleted) {
-      println(f"[$gameID, $player] marking observation ready")
+      Log.debug(f"[$gameID, $player] marking observation ready")
       observationsReady.success(())
     }
   }
@@ -383,3 +383,9 @@ case class MapSettings(
   minerals: Seq[(Int, Int)],
   symmetric: Boolean
 )
+
+object Log {
+  val enableDebugLog = false
+
+  def debug(msg: String) = if (enableDebugLog) println(msg) else Unit
+}
