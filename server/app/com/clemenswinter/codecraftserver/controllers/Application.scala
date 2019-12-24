@@ -95,6 +95,8 @@ class Application @Inject()(
     bb.order(ByteOrder.nativeOrder)
     for (ob <- obs) {
       val allDrones = ob.visibleEnemyDrones.map((_, true)) ++ ob.alliedDrones.map((_, false))
+
+      // Controllable drones
       for (i <- 0 until obsConfig.allies) {
         if (ob.alliedDrones.size <= i) {
           for (_ <- 0 until droneProperties + globals) bb.putFloat(0.0f)
@@ -103,10 +105,10 @@ class Application @Inject()(
           // Time
           bb.putFloat(ob.timestep.toFloat / ob.maxGameLength)
           // Allied drone
-          val x_offset = if (obsConfig.relativePositions) drone.xPos else 0.0f
-          val y_offset = if (obsConfig.relativePositions) drone.yPos else 0.0f
-          bb.putFloat(x_offset / 1000.0f)
-          bb.putFloat(y_offset / 1000.0f)
+          val x = drone.xPos
+          val y = drone.yPos
+          bb.putFloat(x / 1000.0f)
+          bb.putFloat(y / 1000.0f)
           bb.putFloat(math.sin(drone.orientation).toFloat)
           bb.putFloat(math.cos(drone.orientation).toFloat)
           bb.putFloat(drone.storedResources / 50.0f)
@@ -123,6 +125,7 @@ class Application @Inject()(
         }
       }
 
+      // Minerals
       for (i <- 0 until obsConfig.allies) {
         if (ob.alliedDrones.size <= i) {
           for (_ <- 0 until obsConfig.minerals * mineralProperties) bb.putFloat(0.0f)
@@ -145,6 +148,7 @@ class Application @Inject()(
         }
       }
 
+      // All drones
       for (i <- 0 until obsConfig.allies) {
         if (ob.alliedDrones.size <= i) {
           for (_ <- 0 until obsConfig.drones * droneProperties) bb.putFloat(0.0f)
@@ -178,6 +182,7 @@ class Application @Inject()(
       }
     }
 
+    // Scores, winner
     for (ob <- obs) {
       bb.putFloat(ob.winner.map(_ + 1.0f).getOrElse(0))
       bb.putFloat(ob.alliedScore.toFloat)
