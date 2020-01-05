@@ -175,7 +175,8 @@ class PassiveDroneController(
       giveResourcesTo(closest)
     }
 
-    Log.debug(f"[${state.gameID}, ${state.player}] $id Resetting action promise (hitpoints=${this.hitpoints})")
+    Log.debug(
+      f"[${state.gameID}, ${state.player}] $id Resetting action promise (hitpoints=${this.hitpoints})")
     nextAction = Promise()
   }
 
@@ -229,14 +230,14 @@ class PlayerController(val maxGameLength: Int, val player: Player, val gameID: I
       maxGameLength,
       sim.winner.map(_.id),
       for (d <- alliedDrones if !d.isDead)
-        yield DroneObservation(d),
+        yield DroneObservation(d, isEnemy = false),
       (for {
         d <- enemyDrones
         if d.isVisible
-      } yield DroneObservation(d)).toSeq,
+      } yield DroneObservation(d, isEnemy = true)).toSeq,
       for {
         d <- sim.dronesFor(enemyPlayer)
-      } yield DroneObservation(d),
+      } yield DroneObservation(d, isEnemy = true),
       for (m <- minerals.toSeq if !m.harvested)
         yield MineralObservation(m.position.x, m.position.y, m.size),
       alliedDrones.toSeq
@@ -302,11 +303,12 @@ case class DroneObservation(
   storedResources: Int,
   isConstructing: Boolean,
   isHarvesting: Boolean,
-  isStunned: Boolean
+  isStunned: Boolean,
+  isEnemy: Boolean
 )
 
 object DroneObservation {
-  def apply(d: Drone): DroneObservation = {
+  def apply(d: Drone, isEnemy: Boolean): DroneObservation = {
     DroneObservation(
       d.position.x,
       d.position.y,
@@ -321,7 +323,8 @@ object DroneObservation {
       d.storedResources,
       d.isConstructing,
       d.isHarvesting,
-      d.isStunned
+      d.isStunned,
+      isEnemy
     )
   }
 }

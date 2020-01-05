@@ -67,17 +67,27 @@ class Application @Inject()(
     Ok("success").as("application/json")
   }
 
-  def batchPlayerState(json: Boolean, allies: Int, drones: Int, minerals: Int, globalDrones: Int, relativePositions: Boolean) = Action {
-    implicit request =>
-      val obsConfig = ObsConfig(allies, drones, minerals, globalDrones, relativePositions)
-      val games = read[Seq[(Int, Int)]](request.body.asJson.get.toString)
-      val payload: Seq[Observation] = for ((gameID, playerID) <- games)
-        yield multiplayerServer.observe(gameID, playerID)
-      if (json) {
-        Ok(write(payload)).as("application/json")
+  def batchPlayerState(json: Boolean,
+                       allies: Int,
+                       drones: Int,
+                       minerals: Int,
+                       globalDrones: Int,
+                       relativePositions: Boolean,
+                       v2: Boolean) = Action { implicit request =>
+    val obsConfig = ObsConfig(allies, drones, minerals, globalDrones, relativePositions)
+    val games = read[Seq[(Int, Int)]](request.body.asJson.get.toString)
+    val payload: Seq[Observation] = for ((gameID, playerID) <- games)
+      yield multiplayerServer.observe(gameID, playerID)
+    if (json) {
+      Ok(write(payload)).as("application/json")
+    } else {
+      if (v2) {
+        val serializer = new ObsSerializer(payload, obsConfig)
+        Ok(serializer.serialize()).as("application/octet-stream")
       } else {
         Ok(serializeObs(payload, obsConfig)).as("application/octet-stream")
       }
+    }
   }
 
   def serializeObs(obs: Seq[Observation], obsConfig: ObsConfig): Array[Byte] = {
@@ -139,7 +149,9 @@ class Application @Inject()(
             bb.putFloat((m.xPos - x_offset) / 1000.0f)
             bb.putFloat((m.yPos - y_offset) / 1000.0f)
             bb.putFloat(
-              math.sqrt((m.yPos - y_offset) * (m.yPos - y_offset) + (m.xPos - x_offset) * (m.xPos - x_offset)).toFloat / 1000.0f)
+              math
+                .sqrt((m.yPos - y_offset) * (m.yPos - y_offset) + (m.xPos - x_offset) * (m.xPos - x_offset))
+                .toFloat / 1000.0f)
             bb.putFloat(m.size / 100.0f)
           }
           for (_ <- 0 until (obsConfig.minerals - ob.minerals.size) * mineralProperties) {
@@ -157,7 +169,8 @@ class Application @Inject()(
           val x_offset = if (obsConfig.relativePositions) drone.xPos else 0.0f
           val y_offset = if (obsConfig.relativePositions) drone.yPos else 0.0f
           val dronesSorted =
-            allDrones.sortBy(d => (d._1.xPos - x_offset) * (d._1.xPos - x_offset) + (d._1.yPos - y_offset) * (d._1.yPos - y_offset))
+            allDrones.sortBy(d =>
+              (d._1.xPos - x_offset) * (d._1.xPos - x_offset) + (d._1.yPos - y_offset) * (d._1.yPos - y_offset))
           for ((drone, isEnemy) <- dronesSorted.slice(1, obsConfig.drones + 1)) {
             bb.putFloat((drone.xPos - x_offset) / 1000.0f)
             bb.putFloat((drone.yPos - y_offset) / 1000.0f)
@@ -257,4 +270,128 @@ class Application @Inject()(
   def debugState = Action {
     Ok(write(multiplayerServer.debugState)).as("application/json")
   }
+}
+
+class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
+  assert(!obsConfig.relativePositions)
+  private val globalFeat = 2
+  private val extraFeat = 3
+  private val droneFeat = 15
+  private val mineralFeat = 3
+  private val totalObjectFeat = droneFeat * obsConfig.drones + mineralFeat * obsConfig.minerals
+  private val actionMaskFeat = obsConfig.allies * 8
+  // private val privilegedObs = obsConfig.globalDrones * droneProperties
+  private val size = obs.length * (globalFeat + totalObjectFeat + extraFeat + actionMaskFeat)
+  private val bb: ByteBuffer = ByteBuffer.allocate(4 * size)
+  bb.order(ByteOrder.nativeOrder)
+
+  def serialize(): Array[Byte] = {
+    obs.foreach(serializeObjects)
+    obs.foreach(serializeScores)
+    obs.foreach(serializeActionMasks)
+
+    assert(bb.position() == 4 * size, f"Expected ${4 * size} elements, actual: ${bb.position()}")
+    bb.array()
+  }
+
+  def serializeObjects(ob: Observation): Unit = {
+    // Global features
+    bb.putFloat(ob.timestep.toFloat / ob.maxGameLength)
+    bb.putFloat(ob.alliedScore.toFloat)
+
+    // Allies
+    ob.alliedDrones.take(obsConfig.allies).foreach(serializeDrone)
+    val apadding = (obsConfig.allies - ob.alliedDrones.size) * droneFeat
+    for (_ <- 0 until apadding) bb.putFloat(0.0f)
+
+    // Enemies
+    val nEnemy = obsConfig.drones - obsConfig.allies
+    ob.visibleEnemyDrones.take(nEnemy).foreach(serializeDrone)
+    val epadding = (nEnemy - ob.visibleEnemyDrones.size) * droneFeat
+    for (_ <- 0 until epadding) bb.putFloat(0.0f)
+
+    // Minerals
+    ob.minerals.take(obsConfig.minerals).foreach(serializeMineral)
+    val mpadding = (obsConfig.minerals - ob.minerals.size) * mineralFeat
+    for (_ <- 0 until mpadding) bb.putFloat(0.0f)
+  }
+
+  def serializeDrone(drone: DroneObservation): Unit = {
+    bb.putFloat(drone.xPos)
+    bb.putFloat(drone.yPos)
+    bb.putFloat(math.cos(drone.orientation).toFloat)
+    bb.putFloat(math.sin(drone.orientation).toFloat)
+    bb.putFloat(drone.storedResources)
+    bb.putFloat(if (drone.isConstructing) 1.0f else -1.0f)
+    bb.putFloat(if (drone.isHarvesting) 1.0f else -1.0f)
+    bb.putFloat(drone.hitpoints)
+    bb.putFloat(drone.storageModules)
+    bb.putFloat(drone.missileBatteries)
+    bb.putFloat(drone.constructors)
+    bb.putFloat(drone.engines)
+    bb.putFloat(drone.shieldGenerators)
+    bb.putFloat(if (drone.isStunned) 1.0f else -1.0f)
+    bb.putFloat(if (drone.isEnemy) -1.0f else 1.0f)
+  }
+
+  def serializeMineral(m: MineralObservation): Unit = {
+    bb.putFloat(m.xPos)
+    bb.putFloat(m.yPos)
+    bb.putFloat(m.size)
+  }
+
+  def serializeScores(ob: Observation): Unit = {
+    bb.putFloat(ob.winner.map(_ + 1.0f).getOrElse(0))
+    bb.putFloat(ob.alliedScore.toFloat)
+    bb.putFloat(ob.enemyScore.toFloat)
+  }
+
+  def serializeActionMasks(ob: Observation): Unit = {
+    for (i <- 0 until obsConfig.allies) {
+      if (ob.alliedDrones.size <= i) {
+        for (_ <- 0 until 8) bb.putFloat(0.0f)
+      } else {
+        val drone = ob.alliedDrones(i)
+        // 0-5: turn/movement (4 is no turn, no movement)
+        // 6: build [0,1,0,0,0] drone (if minerals > 5)
+        // 7: harvest
+        val canMove = if (drone.isStunned || drone.isConstructing) 0.0f else 1.0f
+        for (_ <- 0 until 6) bb.putFloat(canMove)
+        val canConstruct =
+          if (drone.constructors > 0 && drone.storedResources >= 5 && !drone.isConstructing) 1.0f
+          else 0.0f
+        bb.putFloat(canConstruct)
+        // TODO: harvest action
+        bb.putFloat(0.0f)
+      }
+    }
+  }
+
+  /*
+    // Privileged information
+    for (ob <- obs) {
+      val allDrones = ob.allEnemyDrones.map((_, -1.0f)) ++ ob.alliedDrones.map((_, 1.0f))
+      for ((drone, isEnemy) <- allDrones.slice(0, obsConfig.globalDrones)) {
+        bb.putFloat(drone.xPos / 1000.0f)
+        bb.putFloat(drone.yPos / 1000.0f)
+        bb.putFloat(math.sin(drone.orientation).toFloat)
+        bb.putFloat(math.cos(drone.orientation).toFloat)
+        bb.putFloat(drone.storedResources / 50.0f)
+        bb.putFloat(if (drone.isConstructing) 1.0f else -1.0f)
+        bb.putFloat(if (drone.isHarvesting) 1.0f else -1.0f)
+        bb.putFloat(0.1f * drone.hitpoints)
+        bb.putFloat(0.5f * drone.storageModules)
+        bb.putFloat(0.5f * drone.missileBatteries)
+        bb.putFloat(0.5f * drone.constructors)
+        bb.putFloat(0.5f * drone.engines)
+        bb.putFloat(0.5f * drone.shieldGenerators)
+        bb.putFloat(if (drone.isStunned) 1.0f else -1.0f)
+        bb.putFloat(isEnemy)
+      }
+      for (_ <- 0 until (obsConfig.globalDrones - allDrones.size) * droneProperties) {
+        bb.putFloat(0.0f)
+      }
+    }
+
+  }*/
 }
