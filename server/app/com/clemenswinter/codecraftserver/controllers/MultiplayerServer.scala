@@ -189,12 +189,14 @@ class PassiveDroneController(
   }
 
   override def onMineralEntersVision(m: MineralCrystal): Unit = {
-    state.minerals += m
+    // TODO: efficiency?
+    if (!state.minerals.contains(m)) state.minerals :+= m
   }
 
   override def onDroneEntersVision(drone: Drone): Unit = {
-    if (drone.isEnemy) {
-      state.enemyDrones += drone
+    if (drone.isEnemy && !state.enemyDrones.contains(drone)) {
+      // TODO: efficiency?
+      state.enemyDrones :+= drone
     }
   }
 
@@ -209,11 +211,11 @@ class PassiveDroneController(
 }
 
 class PlayerController(val maxGameLength: Int, val player: Player, val gameID: Int) extends MetaController {
-  @volatile var alliedDrones: Seq[PassiveDroneController] = Seq.empty
-  @volatile var enemyDrones: Set[Drone] = Set.empty
+  @volatile var alliedDrones = Seq.empty[PassiveDroneController]
+  @volatile var enemyDrones = Seq.empty[Drone]
   @volatile var sim: Option[DroneWorldSimulator] = None
   @volatile var observationsReady: Promise[Unit] = Promise()
-  @volatile var minerals = Set.empty[MineralCrystal]
+  @volatile var minerals = Seq.empty[MineralCrystal]
   var dronecount = 0
 
   def observe(sim: DroneWorldSimulator): Observation = {
@@ -231,16 +233,16 @@ class PlayerController(val maxGameLength: Int, val player: Player, val gameID: I
       sim.winner.map(_.id),
       for (d <- alliedDrones if !d.isDead)
         yield DroneObservation(d, isEnemy = false),
-      (for {
+      for {
         d <- enemyDrones
         if d.isVisible
-      } yield DroneObservation(d, isEnemy = true)).toSeq,
+      } yield DroneObservation(d, isEnemy = true),
       for {
         d <- sim.dronesFor(enemyPlayer)
       } yield DroneObservation(d, isEnemy = true),
-      for (m <- minerals.toSeq if !m.harvested)
+      for (m <- minerals if !m.harvested)
         yield MineralObservation(m.position.x, m.position.y, m.size),
-      alliedDrones.toSeq
+      alliedDrones
         .filter(!_.isDead)
         .map(score)
         .sum, // TODO: why doesn't dead drone get removed? (maybe one tick too late?)
