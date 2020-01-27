@@ -278,9 +278,9 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
   private val extraFeat = 3
   private val droneFeat = 15
   private val mineralFeat = 3
-  private val totalObjectFeat = droneFeat * obsConfig.drones + mineralFeat * obsConfig.minerals
+  private val enemies = obsConfig.drones - obsConfig.allies
+  private val totalObjectFeat = droneFeat * (obsConfig.drones + enemies) + mineralFeat * obsConfig.minerals
   private val actionMaskFeat = obsConfig.allies * 8
-  // private val privilegedObs = obsConfig.globalDrones * droneProperties
   private val size = obs.length * (globalFeat + totalObjectFeat + extraFeat + actionMaskFeat)
   private val bb: ByteBuffer = ByteBuffer.allocate(4 * size)
   bb.order(ByteOrder.nativeOrder)
@@ -314,6 +314,11 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
     ob.minerals.take(obsConfig.minerals).foreach(serializeMineral)
     val mpadding = (obsConfig.minerals - ob.minerals.size) * mineralFeat
     for (_ <- 0 until mpadding) bb.putFloat(0.0f)
+
+    // All enemies, including drones not visible to player
+    ob.allEnemyDrones.take(nEnemy).foreach(serializeDrone)
+    val aepadding = (nEnemy - ob.allEnemyDrones.size) * droneFeat
+    for (_ <- 0 until aepadding) bb.putFloat(0.0f)
   }
 
   def serializeDrone(drone: DroneObservation): Unit = {
@@ -366,32 +371,4 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
       }
     }
   }
-
-  /*
-    // Privileged information
-    for (ob <- obs) {
-      val allDrones = ob.allEnemyDrones.map((_, -1.0f)) ++ ob.alliedDrones.map((_, 1.0f))
-      for ((drone, isEnemy) <- allDrones.slice(0, obsConfig.globalDrones)) {
-        bb.putFloat(drone.xPos / 1000.0f)
-        bb.putFloat(drone.yPos / 1000.0f)
-        bb.putFloat(math.sin(drone.orientation).toFloat)
-        bb.putFloat(math.cos(drone.orientation).toFloat)
-        bb.putFloat(drone.storedResources / 50.0f)
-        bb.putFloat(if (drone.isConstructing) 1.0f else -1.0f)
-        bb.putFloat(if (drone.isHarvesting) 1.0f else -1.0f)
-        bb.putFloat(0.1f * drone.hitpoints)
-        bb.putFloat(0.5f * drone.storageModules)
-        bb.putFloat(0.5f * drone.missileBatteries)
-        bb.putFloat(0.5f * drone.constructors)
-        bb.putFloat(0.5f * drone.engines)
-        bb.putFloat(0.5f * drone.shieldGenerators)
-        bb.putFloat(if (drone.isStunned) 1.0f else -1.0f)
-        bb.putFloat(isEnemy)
-      }
-      for (_ <- 0 until (obsConfig.globalDrones - allDrones.size) * droneProperties) {
-        bb.putFloat(0.0f)
-      }
-    }
-
-  }*/
 }
