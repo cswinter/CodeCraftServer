@@ -216,6 +216,7 @@ class PlayerController(val maxGameLength: Int, val player: Player, val gameID: I
   @volatile var sim: Option[DroneWorldSimulator] = None
   @volatile var observationsReady: Promise[Unit] = Promise()
   @volatile var minerals = Seq.empty[MineralCrystal]
+  @volatile var step0 = true
   var dronecount = 0
 
   def observe(sim: DroneWorldSimulator): Observation = {
@@ -264,7 +265,9 @@ class PlayerController(val maxGameLength: Int, val player: Player, val gameID: I
   }
 
   override def onTick(): Unit = {
-    if (!observationsReady.isCompleted) {
+    if (step0) {
+      step0 = false
+    } else if (!observationsReady.isCompleted) {
       Log.debug(f"[$gameID, $player] marking observation ready")
       observationsReady.success(())
     }
