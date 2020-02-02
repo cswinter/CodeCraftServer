@@ -18,7 +18,14 @@ import scala.util.Try
 import scala.concurrent.ExecutionContext.Implicits.global
 import upickle.default._
 
-case class ObsConfig(allies: Int, drones: Int, minerals: Int, globalDrones: Int, relativePositions: Boolean)
+case class ObsConfig(
+  allies: Int,
+  drones: Int,
+  minerals: Int,
+  globalDrones: Int,
+  relativePositions: Boolean,
+  extraBuildActions: Seq[Int] // Number of modules for custom build actions
+)
 
 @Singleton
 class Application @Inject()(
@@ -73,8 +80,9 @@ class Application @Inject()(
                        minerals: Int,
                        globalDrones: Int,
                        relativePositions: Boolean,
-                       v2: Boolean) = Action { implicit request =>
-    val obsConfig = ObsConfig(allies, drones, minerals, globalDrones, relativePositions)
+                       v2: Boolean,
+                       buildActions: Seq[Int]) = Action { implicit request =>
+    val obsConfig = ObsConfig(allies, drones, minerals, globalDrones, relativePositions, buildActions)
     val games = read[Seq[(Int, Int)]](request.body.asJson.get.toString)
     val payload: Seq[Observation] = for ((gameID, playerID) <- games)
       yield multiplayerServer.observe(gameID, playerID)
@@ -280,7 +288,8 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
   private val mineralFeat = 3
   private val enemies = obsConfig.drones - obsConfig.allies
   private val totalObjectFeat = droneFeat * (obsConfig.drones + enemies) + mineralFeat * obsConfig.minerals
-  private val actionMaskFeat = obsConfig.allies * 8
+  private val naction = 8 + obsConfig.extraBuildActions.size
+  private val actionMaskFeat = obsConfig.allies * naction
   private val size = obs.length * (globalFeat + totalObjectFeat + extraFeat + actionMaskFeat)
   private val bb: ByteBuffer = ByteBuffer.allocate(4 * size)
   bb.order(ByteOrder.nativeOrder)
@@ -354,7 +363,7 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
   def serializeActionMasks(ob: Observation): Unit = {
     for (i <- 0 until obsConfig.allies) {
       if (ob.alliedDrones.size <= i) {
-        for (_ <- 0 until 8) bb.putFloat(0.0f)
+        for (_ <- 0 until naction) bb.putFloat(0.0f)
       } else {
         val drone = ob.alliedDrones(i)
         // 0-5: turn/movement (4 is no turn, no movement)
@@ -368,6 +377,12 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
         bb.putFloat(canConstruct)
         // TODO: harvest action
         bb.putFloat(0.0f)
+        for (modules <- obsConfig.extraBuildActions) {
+          val canConstruct =
+            if (drone.constructors > 0 && drone.storedResources >= 5 * modules && !drone.isConstructing) 1.0f
+            else 0.0f
+          bb.putFloat(canConstruct)
+        }
       }
     }
   }
