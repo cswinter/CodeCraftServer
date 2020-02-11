@@ -146,7 +146,7 @@ class PassiveDroneController(
 
     for (spec <- action.buildDrone) {
       val droneSpec = DroneSpec(spec(0), spec(1), spec(2), spec(3), spec(4))
-      if (droneSpec.resourceCost < storedResources) buildDrone(new PassiveDroneController(state), droneSpec)
+      if (droneSpec.resourceCost <= storedResources) buildDrone(new PassiveDroneController(state), droneSpec)
     }
 
     if (action.move && action.turn == 0) {
