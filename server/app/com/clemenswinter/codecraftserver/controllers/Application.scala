@@ -24,7 +24,8 @@ case class ObsConfig(
   minerals: Int,
   globalDrones: Int,
   relativePositions: Boolean,
-  extraBuildActions: Seq[Int] // Number of modules for custom build actions
+  extraBuildActions: Seq[Int], // Number of modules for custom build actions
+  obsLastAction: Boolean
 )
 
 @Singleton
@@ -81,8 +82,10 @@ class Application @Inject()(
                        globalDrones: Int,
                        relativePositions: Boolean,
                        v2: Boolean,
-                       buildActions: Seq[Int]) = Action { implicit request =>
-    val obsConfig = ObsConfig(allies, drones, minerals, globalDrones, relativePositions, buildActions)
+                       buildActions: Seq[Int],
+                       obsLastAction: Boolean) = Action { implicit request =>
+    val obsConfig =
+      ObsConfig(allies, drones, minerals, globalDrones, relativePositions, buildActions, obsLastAction)
     val games = read[Seq[(Int, Int)]](request.body.asJson.get.toString)
     val payload: Seq[Observation] = for ((gameID, playerID) <- games)
       yield multiplayerServer.observe(gameID, playerID)
@@ -284,10 +287,14 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
   assert(!obsConfig.relativePositions)
   private val globalFeat = 2
   private val extraFeat = 3
-  private val droneFeat = 15
+  private val droneFeat = 15 + (if (obsConfig.obsLastAction) { 8 } else { 0 })
+  private val enemyDroneFeat = 15
   private val mineralFeat = 3
   private val enemies = obsConfig.drones - obsConfig.allies
-  private val totalObjectFeat = droneFeat * (obsConfig.drones + enemies) + mineralFeat * obsConfig.minerals
+  private val totalObjectFeat =
+    droneFeat * obsConfig.drones +
+      enemyDroneFeat * enemies +
+      mineralFeat * obsConfig.minerals
   private val naction = 8 + obsConfig.extraBuildActions.size
   private val actionMaskFeat = obsConfig.allies * naction
   private val size = obs.length * (globalFeat + totalObjectFeat + extraFeat + actionMaskFeat)
@@ -346,6 +353,16 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
     bb.putFloat(drone.shieldGenerators)
     bb.putFloat(if (drone.isStunned) 1.0f else -1.0f)
     bb.putFloat(if (drone.isEnemy) -1.0f else 1.0f)
+    if (obsConfig.obsLastAction && !drone.isEnemy) {
+      val action = drone.lastAction.map(_.toInt).getOrElse(0)
+      for (i <- 0 until 8) {
+        if (i == action) {
+          bb.putFloat(1)
+        } else {
+          bb.putFloat(0)
+        }
+      }
+    }
   }
 
   def serializeMineral(m: MineralObservation): Unit = {

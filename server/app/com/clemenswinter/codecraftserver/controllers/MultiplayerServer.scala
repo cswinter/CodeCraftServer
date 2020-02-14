@@ -127,6 +127,7 @@ class PassiveDroneController(
   @volatile var nextAction: Promise[Action] = Promise()
 ) extends DroneController {
   val id: Int = state.nextID()
+  var lastAction: Action = Action(None, false, false, false, 0)
 
   override def onTick(): Unit = {
     if (missileCooldown == 0 && enemiesInSight.nonEmpty) {
@@ -202,6 +203,7 @@ class PassiveDroneController(
 
   def setAction(action: Action): Unit = {
     // WORKAROUND, probably needed because of a race for drone spawn events.
+    lastAction = action
     if (!nextAction.isCompleted) {
       nextAction.success(action)
     }
@@ -233,14 +235,14 @@ class PlayerController(val maxGameLength: Int, val player: Player, val gameID: I
       maxGameLength,
       sim.winner.map(_.id),
       for (d <- alliedDrones if !d.isDead)
-        yield DroneObservation(d, isEnemy = false),
+        yield DroneObservation(d, isEnemy = false, Some(d.lastAction)),
       for {
         d <- enemyDrones
         if d.isVisible
-      } yield DroneObservation(d, isEnemy = true),
+      } yield DroneObservation(d, isEnemy = true, None),
       for {
         d <- sim.dronesFor(enemyPlayer)
-      } yield DroneObservation(d, isEnemy = true),
+      } yield DroneObservation(d, isEnemy = true, None),
       for (m <- minerals if !m.harvested)
         yield MineralObservation(m.position.x, m.position.y, m.size),
       alliedDrones
@@ -309,11 +311,12 @@ case class DroneObservation(
   isConstructing: Boolean,
   isHarvesting: Boolean,
   isStunned: Boolean,
-  isEnemy: Boolean
+  isEnemy: Boolean,
+  lastAction: Option[Action]
 )
 
 object DroneObservation {
-  def apply(d: Drone, isEnemy: Boolean): DroneObservation = {
+  def apply(d: Drone, isEnemy: Boolean, lastAction: Option[Action]): DroneObservation = {
     DroneObservation(
       d.position.x,
       d.position.y,
@@ -329,7 +332,8 @@ object DroneObservation {
       d.isConstructing,
       d.isHarvesting,
       d.isStunned,
-      isEnemy
+      isEnemy,
+      lastAction
     )
   }
 }
@@ -346,7 +350,15 @@ case class Action(
   harvest: Boolean,
   transfer: Boolean,
   turn: Int /* -1, 0, 1 */
-)
+) {
+  def toInt: Int = {
+    if (buildDrone.isDefined) {
+      7
+    } else {
+      (if (move) 0 else 3) + turn + 1
+    }
+  }
+}
 
 object DoNothing
     extends Action(
