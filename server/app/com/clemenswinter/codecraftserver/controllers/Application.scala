@@ -287,13 +287,13 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
   assert(!obsConfig.relativePositions)
   private val globalFeat = 2
   private val extraFeat = 3
-  private val droneFeat = 15 + (if (obsConfig.obsLastAction) { 8 } else { 0 })
+  private val allyDroneFeat = 15 + (if (obsConfig.obsLastAction) { 8 } else { 0 })
   private val enemyDroneFeat = 15
   private val mineralFeat = 3
   private val enemies = obsConfig.drones - obsConfig.allies
   private val totalObjectFeat =
-    droneFeat * obsConfig.drones +
-      enemyDroneFeat * enemies +
+    allyDroneFeat * obsConfig.allies +
+      2 * enemyDroneFeat * enemies +
       mineralFeat * obsConfig.minerals
   private val naction = 8 + obsConfig.extraBuildActions.size
   private val actionMaskFeat = obsConfig.allies * naction
@@ -317,13 +317,13 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
 
     // Allies
     ob.alliedDrones.take(obsConfig.allies).foreach(serializeDrone)
-    val apadding = (obsConfig.allies - ob.alliedDrones.size) * droneFeat
+    val apadding = (obsConfig.allies - ob.alliedDrones.size) * allyDroneFeat
     for (_ <- 0 until apadding) bb.putFloat(0.0f)
 
     // Enemies
     val nEnemy = obsConfig.drones - obsConfig.allies
     ob.visibleEnemyDrones.take(nEnemy).foreach(serializeDrone)
-    val epadding = (nEnemy - ob.visibleEnemyDrones.size) * droneFeat
+    val epadding = (nEnemy - ob.visibleEnemyDrones.size) * enemyDroneFeat
     for (_ <- 0 until epadding) bb.putFloat(0.0f)
 
     // Minerals
@@ -333,7 +333,7 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
 
     // All enemies, including drones not visible to player
     ob.allEnemyDrones.take(nEnemy).foreach(serializeDrone)
-    val aepadding = (nEnemy - ob.allEnemyDrones.size) * droneFeat
+    val aepadding = (nEnemy - ob.allEnemyDrones.size) * enemyDroneFeat
     for (_ <- 0 until aepadding) bb.putFloat(0.0f)
   }
 
