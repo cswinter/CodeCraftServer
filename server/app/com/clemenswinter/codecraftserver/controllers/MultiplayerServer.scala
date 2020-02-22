@@ -171,16 +171,17 @@ class PassiveDroneController(
       halt()
     }
 
-    if (!isHarvesting && action.harvest && mineralsInSight.nonEmpty) {
+    if (!isHarvesting && action.harvest && mineralsInSight.nonEmpty && storedResources < storageModules * 7) {
       val closest =
         mineralsInSight.minBy(mc => (mc.position - position).lengthSquared)
       if (isInHarvestingRange(closest)) harvest(closest)
     }
 
-    if (action.transfer && storedResources > 0) {
-      val closest =
-        alliesInSight.minBy(ally => (ally.position - position).lengthSquared)
-      giveResourcesTo(closest)
+    if (constructors == 0 && storedResources > 0 && alliesInSight.nonEmpty) {
+      for {
+        ally <- alliesInSight
+        if ally.storageModules > 0 && ally.constructors > 0
+      } giveResourcesTo(ally)
     }
 
     Log.debug(
