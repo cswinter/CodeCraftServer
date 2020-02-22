@@ -29,7 +29,10 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
     .asInstanceOf[cwinter.codecraft.core.multiplayer.MultiplayerServer]
   val rng = new Random()
 
-  def startGame(maxTicks: Option[Int], scriptedOpponent: Boolean, customMap: Option[MapSettings]): Integer =
+  def startGame(maxTicks: Option[Int],
+                scriptedOpponent: Boolean,
+                idleOpponent: Boolean,
+                customMap: Option[MapSettings]): Integer =
     synchronized {
       val initialDrones = customMap.map(m => (m.player1Drones.size, m.player2Drones.size)).getOrElse((1, 1))
       val maxGameLength = maxTicks.getOrElse(3 * 60 * 60)
@@ -37,8 +40,12 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
       var controllers: Seq[DroneControllerBase] =
         Seq.fill(initialDrones._1)(new PassiveDroneController(player1, Promise.successful(DoNothing)))
       var player2: Option[PlayerController] = None
-      if (scriptedOpponent) {
+      if (scriptedOpponent && idleOpponent) {
+        println("AFK")
         controllers ++= Seq.fill(initialDrones._2)(new AFK())
+      } else if (scriptedOpponent && !idleOpponent) {
+        println("level7")
+        controllers ++= Seq.fill(initialDrones._2)(TheGameMaster.level7AI())
       } else {
         val p2 = new PlayerController(maxGameLength, OrangePlayer, gameID + 1)
         player2 = Some(p2)

@@ -42,13 +42,13 @@ class Application @Inject()(
     Ok(Observe()).as("text/html")
   }
 
-  def startGame(maxTicks: Option[Int], actionDelay: Int, scriptedOpponent: Boolean) = Action {
-    implicit request =>
+  def startGame(maxTicks: Option[Int], actionDelay: Int, scriptedOpponent: Boolean, idleOpponent: Boolean) =
+    Action { implicit request =>
       val body = request.body.asJson.get.toString
       val customMap = if (body == "\"\"") None else Some(read[MapSettings](body))
-      val id = multiplayerServer.startGame(maxTicks, scriptedOpponent, customMap)
+      val id = multiplayerServer.startGame(maxTicks, scriptedOpponent, idleOpponent, customMap)
       Ok(f"""{"id": $id}""").as("application/json")
-  }
+    }
 
   def act(gameID: Int, playerID: Int) = Action { implicit request =>
     val action = read[Action](request.body.asJson.get.toString)
