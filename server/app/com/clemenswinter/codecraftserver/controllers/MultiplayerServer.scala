@@ -82,12 +82,12 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
     size.yMin + margin + (size.yMax - size.yMin + 2 * margin) * rng.nextFloat()
   )
 
-  def observe(gameID: Int, playerID: Int): Observation = {
+  def observe(gameID: Int, playerID: Int, lastSeen: Boolean): Observation = {
     val game = synchronized {
       if (completedGames.contains((gameID, playerID))) return completedGames((gameID, playerID))
       games(gameID)
     }
-    val observation = game.externalPlayers(playerID).observe(game.simulator)
+    val observation = game.externalPlayers(playerID).observe(game.simulator, lastSeen)
     synchronized {
       if (observation.winner.isDefined) {
         completedGames += (gameID, playerID) -> observation
@@ -112,7 +112,7 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
         game.externalPlayers.head.observationsReady.isCompleted,
         game.simulator.winner.map(_.id),
         game.simulator.currentPhase.toString,
-        game.externalPlayers.head.unsafe_observe(game.simulator)
+        game.externalPlayers.head.unsafe_observe(game.simulator, true)
       )
     }
   }
@@ -223,41 +223,47 @@ class PassiveDroneController(
 class PlayerController(val maxGameLength: Int, val player: Player, val gameID: Int) extends MetaController {
   @volatile var alliedDrones = Seq.empty[PassiveDroneController]
   @volatile var enemyDrones = Seq.empty[Drone]
+  @volatile var timeLastSeen = Map.empty[Drone, Int]
   @volatile var sim: Option[DroneWorldSimulator] = None
   @volatile var observationsReady: Promise[Unit] = Promise()
   @volatile var minerals = Seq.empty[MineralCrystal]
   @volatile var step0 = true
   var dronecount = 0
 
-  def observe(sim: DroneWorldSimulator): Observation = {
+  def observe(sim: DroneWorldSimulator, lastSeen: Boolean): Observation = {
     Log.debug(f"[$gameID, $player] Awaiting obs")
     Await.ready(observationsReady.future, Duration.Inf)
     Log.debug(f"[$gameID, $player] Obs ready")
-    unsafe_observe(sim)
+    unsafe_observe(sim, lastSeen)
   }
 
-  def unsafe_observe(sim: DroneWorldSimulator): Observation = {
+  def unsafe_observe(sim: DroneWorldSimulator, lastSeen: Boolean): Observation = {
     val enemyPlayer = if (player == BluePlayer) OrangePlayer else BluePlayer
     Observation(
       sim.timestep,
       maxGameLength,
       sim.winner.map(_.id),
       for (d <- alliedDrones if !d.isDead)
-        yield DroneObservation(d, isEnemy = false, Some(d.lastAction)),
+        yield DroneObservation(d, isEnemy = false, Some(d.lastAction), 0),
       for {
         d <- enemyDrones
-        if d.isVisible
-      } yield DroneObservation(d, isEnemy = true, None),
+        if d.isVisible || lastSeen
+      } yield {
+        if (d.isVisible) timeLastSeen += d -> sim.timestep
+        DroneObservation(d, isEnemy = true, None, sim.timestep - timeLastSeen.getOrElse(d, 0))
+      },
       for {
         d <- sim.dronesFor(enemyPlayer)
-      } yield DroneObservation(d, isEnemy = true, None),
+      } yield DroneObservation(d, isEnemy = true, None, sim.timestep - timeLastSeen.getOrElse(d, 0)),
       for (m <- minerals if !m.harvested)
         yield MineralObservation(m.position.x, m.position.y, m.size),
       alliedDrones
         .filter(!_.isDead)
         .map(score)
         .sum, // TODO: why doesn't dead drone get removed? (maybe one tick too late?)
-      sim.dronesFor(enemyPlayer).map(score).sum
+      sim.dronesFor(enemyPlayer).map(score).sum,
+      sim.config.worldSize.height,
+      sim.config.worldSize.width
     )
   }
 
@@ -301,7 +307,9 @@ case class Observation(
   allEnemyDrones: Seq[DroneObservation],
   minerals: Seq[MineralObservation],
   alliedScore: Double,
-  enemyScore: Double
+  enemyScore: Double,
+  mapHeight: Double,
+  mapWidth: Double
 )
 
 case class DroneObservation(
@@ -320,28 +328,35 @@ case class DroneObservation(
   isHarvesting: Boolean,
   isStunned: Boolean,
   isEnemy: Boolean,
-  lastAction: Option[Action]
+  lastAction: Option[Action],
+  missileCooldown: Int,
+  timeSinceVisible: Int
 )
 
 object DroneObservation {
-  def apply(d: Drone, isEnemy: Boolean, lastAction: Option[Action]): DroneObservation = {
+  def apply(d: Drone,
+            isEnemy: Boolean,
+            lastAction: Option[Action],
+            timeSinceVisible: Int): DroneObservation = {
     DroneObservation(
-      d.position.x,
-      d.position.y,
-      d.orientation.toFloat,
+      d.lastKnownPosition.x,
+      d.lastKnownPosition.y,
+      d.lastKnownOrientation.toFloat,
       d.spec.moduleCount,
       d.storageModules,
       d.missileBatteries,
       d.constructors,
       d.engines,
       d.shieldGenerators,
-      d.hitpoints,
-      d.storedResources,
-      d.isConstructing,
-      d.isHarvesting,
-      d.isStunned,
+      if (d.isVisible) d.hitpoints else d.maxHitpoints,
+      if (d.isVisible) d.storedResources else 0,
+      if (d.isVisible) d.isConstructing else false,
+      if (d.isVisible) d.isHarvesting else false,
+      if (d.isVisible) d.isStunned else false,
       isEnemy,
-      lastAction
+      lastAction,
+      if (d.isVisible && d.missileBatteries > 0) d.missileCooldown else GameConstants.MissileCooldown,
+      timeSinceVisible
     )
   }
 }
