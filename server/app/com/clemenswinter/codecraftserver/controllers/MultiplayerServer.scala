@@ -340,9 +340,9 @@ object DroneObservation {
             lastAction: Option[Action],
             timeSinceVisible: Int): DroneObservation = {
     DroneObservation(
-      d.lastKnownPosition.x,
-      d.lastKnownPosition.y,
-      d.lastKnownOrientation.toFloat,
+      if (d.isVisible) d.position.x else d.lastKnownPosition.x,
+      if (d.isVisible) d.position.y else d.lastKnownPosition.y,
+      if (d.isVisible) d.orientation.toFloat else d.lastKnownOrientation.toFloat,
       d.spec.moduleCount,
       d.storageModules,
       d.missileBatteries,
