@@ -239,6 +239,7 @@ class PlayerController(val maxGameLength: Int, val player: Player, val gameID: I
 
   def unsafe_observe(sim: DroneWorldSimulator, lastSeen: Boolean): Observation = {
     val enemyPlayer = if (player == BluePlayer) OrangePlayer else BluePlayer
+    enemyDrones = enemyDrones.filterNot(_.isDead)
     Observation(
       sim.timestep,
       maxGameLength,
