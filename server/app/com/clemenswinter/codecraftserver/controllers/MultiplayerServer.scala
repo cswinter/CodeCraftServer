@@ -246,13 +246,16 @@ class PlayerController(val maxGameLength: Int, val player: Player, val gameID: I
       sim.winner.map(_.id),
       for (d <- alliedDrones if !d.isDead)
         yield DroneObservation(d, isEnemy = false, Some(d.lastAction), 0),
-      for {
+      (for {
         d <- enemyDrones
-        if d.isVisible || lastSeen
+        if d.isVisible
       } yield {
-        if (d.isVisible) timeLastSeen += d -> sim.timestep
+        timeLastSeen += d -> sim.timestep
         DroneObservation(d, isEnemy = true, None, sim.timestep - timeLastSeen.getOrElse(d, 0))
-      },
+      }) ++ (for {
+        d <- enemyDrones
+        if !d.isVisible && lastSeen
+      } yield DroneObservation(d, isEnemy = true, None, sim.timestep - timeLastSeen.getOrElse(d, 0))),
       for {
         d <- sim.dronesFor(enemyPlayer)
       } yield DroneObservation(d, isEnemy = true, None, sim.timestep - timeLastSeen.getOrElse(d, 0)),
@@ -276,7 +279,7 @@ class PlayerController(val maxGameLength: Int, val player: Player, val gameID: I
     observationsReady = Promise()
     for ((d, i) <- alliedDrones.zipWithIndex) {
       Log.debug(f"[$gameID, $player] set action on ${d.id}")
-      val action = if (i < actions.size) actions(i) else DoNothing
+      val action = if (i < actions.size) actions(i) else DoNothing // Action(None, false, true, true, -1)
       d.setAction(action)
     }
   }
