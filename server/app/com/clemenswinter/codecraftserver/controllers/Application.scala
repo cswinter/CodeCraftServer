@@ -23,6 +23,7 @@ case class ObsConfig(
   drones: Int,
   minerals: Int,
   globalDrones: Int,
+  tiles: Int,
   relativePositions: Boolean,
   extraBuildActions: Seq[Int], // Number of modules for custom build actions
   obsLastAction: Boolean,
@@ -82,6 +83,7 @@ class Application @Inject()(
                        drones: Int,
                        minerals: Int,
                        globalDrones: Int,
+                       tiles: Int,
                        relativePositions: Boolean,
                        v2: Boolean,
                        buildActions: Seq[Int],
@@ -93,6 +95,7 @@ class Application @Inject()(
                 drones,
                 minerals,
                 globalDrones,
+                tiles,
                 relativePositions,
                 buildActions,
                 obsLastAction,
@@ -139,11 +142,13 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
     (if (obsConfig.lastSeen) { 2 } else { 0 })
   private val enemyDroneFeat = 15 + (if (obsConfig.lastSeen) { 2 } else { 0 })
   private val mineralFeat = 3
+  private val tileFeat = 4
   private val enemies = obsConfig.drones - obsConfig.allies
   private val totalObjectFeat =
     allyDroneFeat * obsConfig.allies +
       2 * enemyDroneFeat * enemies +
-      mineralFeat * obsConfig.minerals
+      mineralFeat * obsConfig.minerals +
+      tileFeat * obsConfig.tiles
   private val naction = 8 + obsConfig.extraBuildActions.size
   private val actionMaskFeat = obsConfig.allies * naction
   private val size = obs.length * (globalFeat + totalObjectFeat + extraFeat + actionMaskFeat)
@@ -183,6 +188,14 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
     ob.minerals.take(obsConfig.minerals).foreach(serializeMineral)
     val mpadding = (obsConfig.minerals - ob.minerals.size) * mineralFeat
     for (_ <- 0 until mpadding) bb.putFloat(0.0f)
+
+    // Tiles
+    val tiles = ob.tiles
+      .sortBy(t => (t.lastVisitedTime, t.hashCode))
+      .take(obsConfig.tiles)
+    tiles.foreach(serializeTile(ob.timestep, ob.maxGameLength))
+    val tpadding = (obsConfig.tiles - tiles.size) * tileFeat
+    for (_ <- 0 until tpadding) bb.putFloat(0.0f)
 
     // All enemies, including drones not visible to player
     ob.allEnemyDrones.take(nEnemy).foreach(serializeDrone)
@@ -226,6 +239,13 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
     bb.putFloat(m.xPos)
     bb.putFloat(m.yPos)
     bb.putFloat(m.size)
+  }
+
+  def serializeTile(time: Int, tmax: Int)(t: MapTile): Unit = {
+    bb.putFloat(t.centerX)
+    bb.putFloat(t.centerY)
+    bb.putFloat(if (t.lastVisitedTime == 0) tmax else time - t.lastVisitedTime)
+    bb.putFloat(if (t.lastVisitedTime == 0) { -1 } else { 1 })
   }
 
   def serializeScores(ob: Observation): Unit = {

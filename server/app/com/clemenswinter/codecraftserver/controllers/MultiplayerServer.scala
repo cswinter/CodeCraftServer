@@ -36,7 +36,11 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
     synchronized {
       val initialDrones = customMap.map(m => (m.player1Drones.size, m.player2Drones.size)).getOrElse((1, 1))
       val maxGameLength = maxTicks.getOrElse(3 * 60 * 60)
-      val player1 = new PlayerController(maxGameLength, BluePlayer, gameID + 1)
+      val mapWidth = customMap.map(_.mapWidth).getOrElse(6000)
+      val mapHeight = customMap.map(_.mapHeight).getOrElse(4000)
+      val tileWidth = 400
+      val player1 =
+        new PlayerController(maxGameLength, BluePlayer, gameID + 1, mapWidth, mapHeight, tileWidth)
       var controllers: Seq[DroneControllerBase] =
         Seq.fill(initialDrones._1)(new PassiveDroneController(player1, Promise.successful(DoNothing)))
       var player2: Option[PlayerController] = None
@@ -47,7 +51,8 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
         println("level7")
         controllers ++= Seq.fill(initialDrones._2)(TheGameMaster.level7AI())
       } else {
-        val p2 = new PlayerController(maxGameLength, OrangePlayer, gameID + 1)
+        val p2 =
+          new PlayerController(maxGameLength, OrangePlayer, gameID + 1, mapWidth, mapHeight, tileWidth)
         player2 = Some(p2)
         controllers ++= Seq.fill(initialDrones._2)(
           new PassiveDroneController(p2, Promise.successful(DoNothing)))
@@ -137,6 +142,8 @@ class PassiveDroneController(
   var lastAction: Action = Action(None, false, false, false, 0)
 
   override def onTick(): Unit = {
+    state.updateTiles(position)
+
     if (missileCooldown == 0 && enemiesInSight.nonEmpty) {
       val closest = enemiesInSight.minBy(enemy => (enemy.position - position).lengthSquared)
       if (isInMissileRange(closest)) fireMissilesAt(closest)
@@ -220,7 +227,14 @@ class PassiveDroneController(
   override def metaController = Some(state)
 }
 
-class PlayerController(val maxGameLength: Int, val player: Player, val gameID: Int) extends MetaController {
+class PlayerController(
+  val maxGameLength: Int,
+  val player: Player,
+  val gameID: Int,
+  val mapWidth: Int,
+  val mapHeight: Int,
+  val tileWidth: Int
+) extends MetaController {
   @volatile var alliedDrones = Seq.empty[PassiveDroneController]
   @volatile var enemyDrones = Seq.empty[Drone]
   @volatile var timeLastSeen = Map.empty[Drone, Int]
@@ -228,6 +242,16 @@ class PlayerController(val maxGameLength: Int, val player: Player, val gameID: I
   @volatile var observationsReady: Promise[Unit] = Promise()
   @volatile var minerals = Seq.empty[MineralCrystal]
   @volatile var step0 = true
+  var time = 0
+  var timestep = 0
+  var tiles: Array[Array[MapTile]] = Array.tabulate(
+    (mapWidth + tileWidth - 1) / tileWidth,
+    (mapHeight + tileWidth - 1) / tileWidth
+  )(
+    (x, y) =>
+      new MapTile(x * tileWidth + tileWidth / 2 - mapWidth / 2,
+                  y * tileWidth + tileWidth / 2 - mapHeight / 2,
+                  0))
   var dronecount = 0
 
   def observe(sim: DroneWorldSimulator, lastSeen: Boolean): Observation = {
@@ -240,6 +264,7 @@ class PlayerController(val maxGameLength: Int, val player: Player, val gameID: I
   def unsafe_observe(sim: DroneWorldSimulator, lastSeen: Boolean): Observation = {
     val enemyPlayer = if (player == BluePlayer) OrangePlayer else BluePlayer
     enemyDrones = enemyDrones.filterNot(_.isDead)
+    timestep = sim.timestep
     Observation(
       sim.timestep,
       maxGameLength,
@@ -267,7 +292,8 @@ class PlayerController(val maxGameLength: Int, val player: Player, val gameID: I
         .sum, // TODO: why doesn't dead drone get removed? (maybe one tick too late?)
       sim.dronesFor(enemyPlayer).map(score).sum,
       sim.config.worldSize.height,
-      sim.config.worldSize.width
+      sim.config.worldSize.width,
+      tiles.flatMap(_.toSeq)
     )
   }
 
@@ -288,6 +314,7 @@ class PlayerController(val maxGameLength: Int, val player: Player, val gameID: I
     if (step0) {
       step0 = false
     } else if (!observationsReady.isCompleted) {
+      time += 1
       Log.debug(f"[$gameID, $player] marking observation ready")
       observationsReady.success(())
     }
@@ -300,7 +327,32 @@ class PlayerController(val maxGameLength: Int, val player: Player, val gameID: I
   }
 
   def nextID(): Int = { dronecount += 1; dronecount }
+
+  def updateTiles(pos: Vector2): Unit = {
+    var x = ((pos.x + mapWidth / 2) / tileWidth).toInt
+    var y = ((pos.y + mapHeight / 2) / tileWidth).toInt
+
+    if (x < 0) x = 0
+    if (x >= tiles.length) x = tiles.length - 1
+    if (y < 0) y = 0
+    if (y >= tiles(0).length) y = tiles(0).length - 1
+
+    val tile = tiles(x)(y)
+
+    // assert(tile.centerX - tileWidth / 2 <= pos.x)
+    // assert(pos.x <= tile.centerX + tileWidth / 2)
+    // assert(tile.centerY - tileWidth / 2 <= pos.y)
+    // assert(pos.y <= tile.centerY + tileWidth / 2)
+
+    tile.lastVisitedTime = timestep + 10
+  }
 }
+
+case class MapTile(
+  centerX: Int,
+  centerY: Int,
+  var lastVisitedTime: Int
+)
 
 case class Observation(
   timestep: Int,
@@ -313,7 +365,8 @@ case class Observation(
   alliedScore: Double,
   enemyScore: Double,
   mapHeight: Double,
-  mapWidth: Double
+  mapWidth: Double,
+  tiles: Seq[MapTile]
 )
 
 case class DroneObservation(
