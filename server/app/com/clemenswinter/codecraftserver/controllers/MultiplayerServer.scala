@@ -387,7 +387,8 @@ case class DroneObservation(
   isEnemy: Boolean,
   lastAction: Option[Action],
   missileCooldown: Int,
-  timeSinceVisible: Int
+  timeSinceVisible: Int,
+  isVisible: Boolean
 )
 
 object DroneObservation {
@@ -413,7 +414,8 @@ object DroneObservation {
       isEnemy,
       lastAction,
       if (d.isVisible && d.missileBatteries > 0) d.missileCooldown else GameConstants.MissileCooldown,
-      timeSinceVisible
+      timeSinceVisible,
+      d.isVisible
     )
   }
 }

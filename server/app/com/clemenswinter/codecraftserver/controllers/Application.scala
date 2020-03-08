@@ -28,6 +28,8 @@ case class ObsConfig(
   extraBuildActions: Seq[Int], // Number of modules for custom build actions
   obsLastAction: Boolean,
   lastSeen: Boolean,
+  isVisible: Boolean,
+  abstime: Boolean,
   mapSize: Boolean
 )
 
@@ -89,6 +91,8 @@ class Application @Inject()(
                        buildActions: Seq[Int],
                        obsLastAction: Boolean,
                        lastSeen: Boolean,
+                       isVisible: Boolean,
+                       abstime: Boolean,
                        mapSize: Boolean) = Action { implicit request =>
     val obsConfig =
       ObsConfig(allies,
@@ -100,6 +104,8 @@ class Application @Inject()(
                 buildActions,
                 obsLastAction,
                 lastSeen,
+                isVisible,
+                abstime,
                 mapSize)
     val games = read[Seq[(Int, Int)]](request.body.asJson.get.toString)
     val payload: Seq[Observation] = for ((gameID, playerID) <- games)
@@ -136,11 +142,11 @@ class Application @Inject()(
 
 class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
   assert(!obsConfig.relativePositions)
-  private val globalFeat = 2 + (if (obsConfig.mapSize) { 2 } else { 0 })
+  private val globalFeat = 2 + (if (obsConfig.mapSize) 2 else 0) + (if (obsConfig.abstime) 2 else 0)
   private val extraFeat = 3
-  private val allyDroneFeat = 15 + (if (obsConfig.obsLastAction) { 8 } else { 0 }) +
-    (if (obsConfig.lastSeen) { 2 } else { 0 })
-  private val enemyDroneFeat = 15 + (if (obsConfig.lastSeen) { 2 } else { 0 })
+  private val allyDroneFeat = 15 + (if (obsConfig.obsLastAction) 8 else 0) +
+    (if (obsConfig.lastSeen) 2 else 0) + (if (obsConfig.isVisible) 1 else 0)
+  private val enemyDroneFeat = 15 + (if (obsConfig.lastSeen) 2 else 0) + (if (obsConfig.isVisible) 1 else 0)
   private val mineralFeat = 3
   private val tileFeat = 4
   private val enemies = obsConfig.drones - obsConfig.allies
@@ -171,6 +177,10 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
     if (obsConfig.mapSize) {
       bb.putFloat(ob.mapHeight.toFloat)
       bb.putFloat(ob.mapWidth.toFloat)
+    }
+    if (obsConfig.abstime) {
+      bb.putFloat(ob.timestep)
+      bb.putFloat(ob.maxGameLength - ob.timestep)
     }
 
     // Allies
@@ -222,6 +232,9 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
     if (obsConfig.lastSeen) {
       bb.putFloat(drone.timeSinceVisible.toFloat)
       bb.putFloat(drone.missileCooldown.toFloat)
+    }
+    if (obsConfig.isVisible) {
+      bb.putFloat(if (drone.isVisible) 1.0f else -1.0f)
     }
     if (obsConfig.obsLastAction && !drone.isEnemy) {
       val action = drone.lastAction.map(_.toInt).getOrElse(0)
