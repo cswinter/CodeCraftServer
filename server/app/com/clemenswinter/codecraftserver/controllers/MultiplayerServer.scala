@@ -242,6 +242,7 @@ class PlayerController(
   @volatile var observationsReady: Promise[Unit] = Promise()
   @volatile var minerals = Seq.empty[MineralCrystal]
   @volatile var step0 = true
+  private val rng = new Random()
   var time = 0
   var timestep = 0
   var tiles: Array[Array[MapTile]] = Array.tabulate(
@@ -305,7 +306,8 @@ class PlayerController(
     observationsReady = Promise()
     for ((d, i) <- alliedDrones.zipWithIndex) {
       Log.debug(f"[$gameID, $player] set action on ${d.id}")
-      val action = if (i < actions.size) actions(i) else DoNothing // Action(None, false, true, true, -1)
+      val action =
+        if (i < actions.size) actions(i) else Action(None, rng.nextBoolean(), true, true, rng.nextInt(3) - 1)
       d.setAction(action)
     }
   }
