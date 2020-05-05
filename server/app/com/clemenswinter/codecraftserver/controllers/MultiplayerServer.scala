@@ -254,6 +254,9 @@ class PlayerController(
                   y * tileWidth + tileWidth / 2 - mapHeight / 2,
                   0))
   var dronecount = 0
+  var maxHitpoints = 0
+  var minAlliedMSHealth = 0.0
+  var minEnemyMSHealth = 0.0
 
   def observe(sim: DroneWorldSimulator, lastSeen: Boolean): Observation = {
     Log.debug(f"[$gameID, $player] Awaiting obs")
@@ -264,6 +267,27 @@ class PlayerController(
 
   def unsafe_observe(sim: DroneWorldSimulator, lastSeen: Boolean): Observation = {
     val enemyPlayer = if (player == BluePlayer) OrangePlayer else BluePlayer
+    if (maxHitpoints == 0) {
+      maxHitpoints = math.max(
+        (for (d <- sim.dronesFor(player)) yield d.maxHitpoints).max,
+        (for (d <- sim.dronesFor(enemyPlayer)) yield d.maxHitpoints).max
+      )
+    }
+
+    val alliedMS = for (d <- alliedDrones if d.constructors > 0) yield d.hitpoints / maxHitpoints.toDouble
+    if (alliedMS.isEmpty) {
+      minAlliedMSHealth = 0
+    } else {
+      minAlliedMSHealth = math.min(minAlliedMSHealth, alliedMS.min)
+    }
+    val enemyMS = for (d <- sim.dronesFor(enemyPlayer) if d.constructors > 0)
+      yield d.hitpoints / maxHitpoints.toDouble
+    if (enemyMS.isEmpty) {
+      minEnemyMSHealth = 0
+    } else {
+      minEnemyMSHealth = math.min(minEnemyMSHealth, enemyMS.min)
+    }
+
     enemyDrones = enemyDrones.filterNot(_.isDead)
     timestep = sim.timestep
     Observation(
@@ -292,6 +316,8 @@ class PlayerController(
         .map(score)
         .sum, // TODO: why doesn't dead drone get removed? (maybe one tick too late?)
       sim.dronesFor(enemyPlayer).map(score).sum,
+      minAlliedMSHealth,
+      minEnemyMSHealth,
       sim.config.worldSize.height,
       sim.config.worldSize.width,
       tiles.flatMap(_.toSeq)
@@ -366,6 +392,8 @@ case class Observation(
   minerals: Seq[MineralObservation],
   alliedScore: Double,
   enemyScore: Double,
+  minAlliedMSHealth: Double,
+  minEnemyMSHealth: Double,
   mapHeight: Double,
   mapWidth: Double,
   tiles: Seq[MapTile]

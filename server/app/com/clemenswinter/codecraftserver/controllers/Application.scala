@@ -143,7 +143,7 @@ class Application @Inject()(
 class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
   assert(!obsConfig.relativePositions)
   private val globalFeat = 2 + (if (obsConfig.mapSize) 2 else 0) + (if (obsConfig.abstime) 2 else 0)
-  private val extraFeat = 3
+  private val extraFeat = 5 // Unobserved features such as score, winner, ms health
   private val allyDroneFeat = 15 + (if (obsConfig.obsLastAction) 8 else 0) +
     (if (obsConfig.lastSeen) 2 else 0) + (if (obsConfig.isVisible) 1 else 0)
   private val enemyDroneFeat = 15 + (if (obsConfig.lastSeen) 2 else 0) + (if (obsConfig.isVisible) 1 else 0)
@@ -265,6 +265,8 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
     bb.putFloat(ob.winner.map(_ + 1.0f).getOrElse(0))
     bb.putFloat(ob.alliedScore.toFloat)
     bb.putFloat(ob.enemyScore.toFloat)
+    bb.putFloat(ob.minAlliedMSHealth.toFloat)
+    bb.putFloat(ob.minEnemyMSHealth.toFloat)
   }
 
   def serializeActionMasks(ob: Observation): Unit = {
