@@ -32,7 +32,8 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
   def startGame(maxTicks: Option[Int],
                 scriptedOpponent: Boolean,
                 idleOpponent: Boolean,
-                customMap: Option[MapSettings]): Integer =
+                customMap: Option[MapSettings],
+                rules: SpecialRules): Integer =
     synchronized {
       val initialDrones = customMap.map(m => (m.player1Drones.size, m.player2Drones.size)).getOrElse((1, 1))
       val maxGameLength = maxTicks.getOrElse(3 * 60 * 60)
@@ -40,7 +41,7 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
       val mapHeight = customMap.map(_.mapHeight).getOrElse(4000)
       val tileWidth = 400
       val player1 =
-        new PlayerController(maxGameLength, BluePlayer, gameID + 1, mapWidth, mapHeight, tileWidth)
+        new PlayerController(maxGameLength, BluePlayer, gameID + 1, mapWidth, mapHeight, tileWidth, rules)
       var controllers: Seq[DroneControllerBase] =
         Seq.fill(initialDrones._1)(new PassiveDroneController(player1, Promise.successful(DoNothing)))
       var player2: Option[PlayerController] = None
@@ -52,7 +53,13 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
         controllers ++= Seq.fill(initialDrones._2)(TheGameMaster.level7AI())
       } else {
         val p2 =
-          new PlayerController(maxGameLength, OrangePlayer, gameID + 1, mapWidth, mapHeight, tileWidth)
+          new PlayerController(maxGameLength,
+                               OrangePlayer,
+                               gameID + 1,
+                               mapWidth,
+                               mapHeight,
+                               tileWidth,
+                               rules)
         player2 = Some(p2)
         controllers ++= Seq.fill(initialDrones._2)(
           new PassiveDroneController(p2, Promise.successful(DoNothing)))
@@ -70,7 +77,7 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
             m.symmetric
         )
       )
-      val simulator = server.startLocalGame(controllers, winCondition, map)
+      val simulator = server.startLocalGame(controllers, winCondition, map, rules)
       gameID += 1
       val playerControllers = player2 match {
         case Some(p2) => Seq(player1, p2)
@@ -233,7 +240,8 @@ class PlayerController(
   val gameID: Int,
   val mapWidth: Int,
   val mapHeight: Int,
-  val tileWidth: Int
+  val tileWidth: Int,
+  val rules: SpecialRules
 ) extends MetaController {
   @volatile var alliedDrones = Seq.empty[PassiveDroneController]
   @volatile var enemyDrones = Seq.empty[Drone]
@@ -320,7 +328,8 @@ class PlayerController(
       minEnemyMSHealth,
       sim.config.worldSize.height,
       sim.config.worldSize.width,
-      tiles.flatMap(_.toSeq)
+      tiles.flatMap(_.toSeq),
+      rules
     )
   }
 
@@ -396,7 +405,8 @@ case class Observation(
   minEnemyMSHealth: Double,
   mapHeight: Double,
   mapWidth: Double,
-  tiles: Seq[MapTile]
+  tiles: Seq[MapTile],
+  rules: SpecialRules
 )
 
 case class DroneObservation(

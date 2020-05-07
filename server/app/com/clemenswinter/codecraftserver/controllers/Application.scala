@@ -12,6 +12,7 @@ import scala.concurrent.duration._
 import scala.language.postfixOps
 import akka.pattern.ask
 import akka.util.Timeout
+import cwinter.codecraft.core.game.SpecialRules
 import play.api.mvc._
 
 import scala.util.Try
@@ -30,8 +31,11 @@ case class ObsConfig(
   lastSeen: Boolean,
   isVisible: Boolean,
   abstime: Boolean,
-  mapSize: Boolean
-)
+  mapSize: Boolean,
+  ruleMsdm: Boolean
+) {
+  def rules: Int = if (ruleMsdm) 1 else 0
+}
 
 @Singleton
 class Application @Inject()(
@@ -47,11 +51,18 @@ class Application @Inject()(
     Ok(Observe()).as("text/html")
   }
 
-  def startGame(maxTicks: Option[Int], actionDelay: Int, scriptedOpponent: Boolean, idleOpponent: Boolean) =
+  def startGame(
+    maxTicks: Option[Int],
+    actionDelay: Int,
+    scriptedOpponent: Boolean,
+    idleOpponent: Boolean,
+    mothershipDamageMultiplier: Double
+  ) =
     Action { implicit request =>
       val body = request.body.asJson.get.toString
       val customMap = if (body == "\"\"") None else Some(read[MapSettings](body))
-      val id = multiplayerServer.startGame(maxTicks, scriptedOpponent, idleOpponent, customMap)
+      val rules = SpecialRules(mothershipDamageMultiplier)
+      val id = multiplayerServer.startGame(maxTicks, scriptedOpponent, idleOpponent, customMap, rules)
       Ok(f"""{"id": $id}""").as("application/json")
     }
 
@@ -93,7 +104,8 @@ class Application @Inject()(
                        lastSeen: Boolean,
                        isVisible: Boolean,
                        abstime: Boolean,
-                       mapSize: Boolean) = Action { implicit request =>
+                       mapSize: Boolean,
+                       ruleMsdm: Boolean) = Action { implicit request =>
     val obsConfig =
       ObsConfig(allies,
                 drones,
@@ -106,7 +118,8 @@ class Application @Inject()(
                 lastSeen,
                 isVisible,
                 abstime,
-                mapSize)
+                mapSize,
+                ruleMsdm)
     val games = read[Seq[(Int, Int)]](request.body.asJson.get.toString)
     val payload: Seq[Observation] = for ((gameID, playerID) <- games)
       yield multiplayerServer.observe(gameID, playerID, lastSeen)
@@ -142,7 +155,7 @@ class Application @Inject()(
 
 class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
   assert(!obsConfig.relativePositions)
-  private val globalFeat = 2 + (if (obsConfig.mapSize) 2 else 0) + (if (obsConfig.abstime) 2 else 0)
+  private val globalFeat = 2 + (if (obsConfig.mapSize) 2 else 0) + (if (obsConfig.abstime) 2 else 0) + obsConfig.rules
   private val extraFeat = 5 // Unobserved features such as score, winner, ms health
   private val allyDroneFeat = 15 + (if (obsConfig.obsLastAction) 8 else 0) +
     (if (obsConfig.lastSeen) 2 else 0) + (if (obsConfig.isVisible) 1 else 0)
@@ -181,6 +194,9 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
     if (obsConfig.abstime) {
       bb.putFloat(ob.timestep)
       bb.putFloat(ob.maxGameLength - ob.timestep)
+    }
+    if (obsConfig.ruleMsdm) {
+      bb.putFloat(ob.rules.mothershipDamageMultiplier.toFloat)
     }
 
     // Allies
