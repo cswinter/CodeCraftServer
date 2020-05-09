@@ -139,7 +139,14 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
 
 case class Game(simulator: DroneWorldSimulator, externalPlayers: Seq[PlayerController])
 
-class AFK extends DroneController
+class AFK extends DroneController {
+  override def onTick(): Unit = {
+    if (missileCooldown == 0 && enemiesInSight.nonEmpty) {
+      val closest = enemiesInSight.minBy(enemy => (enemy.position - position).lengthSquared)
+      if (isInMissileRange(closest)) fireMissilesAt(closest)
+    }
+  }
+}
 
 class PassiveDroneController(
   var state: PlayerController,
