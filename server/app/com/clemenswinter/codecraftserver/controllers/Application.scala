@@ -32,9 +32,10 @@ case class ObsConfig(
   isVisible: Boolean,
   abstime: Boolean,
   mapSize: Boolean,
-  ruleMsdm: Boolean
+  ruleMsdm: Boolean,
+  ruleCosts: Boolean
 ) {
-  def rules: Int = if (ruleMsdm) 1 else 0
+  def rules: Int = (if (ruleMsdm) 1 else 0) + (if (ruleCosts) 9 else 0)
 }
 
 @Singleton
@@ -56,12 +57,29 @@ class Application @Inject()(
     actionDelay: Int,
     scriptedOpponent: Boolean,
     idleOpponent: Boolean,
-    mothershipDamageMultiplier: Double
+    mothershipDamageMultiplier: Double,
+    costModifierSize1: Double,
+    costModifierSize2: Double,
+    costModifierSize3: Double,
+    costModifierSize4: Double,
+    costModifierConstructor: Double,
+    costModifierStorage: Double,
+    costModifierShields: Double,
+    costModifierMissiles: Double,
+    costModifierEngines: Double
   ) =
     Action { implicit request =>
       val body = request.body.asJson.get.toString
       val customMap = if (body == "\"\"") None else Some(read[MapSettings](body))
-      val rules = SpecialRules(mothershipDamageMultiplier)
+      val rules = SpecialRules(
+        mothershipDamageMultiplier,
+        Array(costModifierSize1, costModifierSize2, costModifierSize3, costModifierSize4),
+        costModifierConstructor,
+        costModifierStorage,
+        costModifierShields,
+        costModifierMissiles,
+        costModifierEngines
+      )
       val id = multiplayerServer.startGame(maxTicks, scriptedOpponent, idleOpponent, customMap, rules)
       Ok(f"""{"id": $id}""").as("application/json")
     }
@@ -105,7 +123,8 @@ class Application @Inject()(
                        isVisible: Boolean,
                        abstime: Boolean,
                        mapSize: Boolean,
-                       ruleMsdm: Boolean) = Action { implicit request =>
+                       ruleMsdm: Boolean,
+                       ruleCosts: Boolean) = Action { implicit request =>
     val obsConfig =
       ObsConfig(allies,
                 drones,
@@ -119,7 +138,8 @@ class Application @Inject()(
                 isVisible,
                 abstime,
                 mapSize,
-                ruleMsdm)
+                ruleMsdm,
+                ruleCosts)
     val games = read[Seq[(Int, Int)]](request.body.asJson.get.toString)
     val payload: Seq[Observation] = for ((gameID, playerID) <- games)
       yield multiplayerServer.observe(gameID, playerID, lastSeen)
@@ -197,6 +217,16 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
     }
     if (obsConfig.ruleMsdm) {
       bb.putFloat(ob.rules.mothershipDamageMultiplier.toFloat)
+    }
+    if (obsConfig.ruleCosts) {
+      for (m <- ob.rules.costModifierSize) {
+        bb.putFloat(m.toFloat)
+      }
+      bb.putFloat(ob.rules.costModifierConstructor.toFloat)
+      bb.putFloat(ob.rules.costModifierStorage.toFloat)
+      bb.putFloat(ob.rules.costModifierShields.toFloat)
+      bb.putFloat(ob.rules.costModifierMissiles.toFloat)
+      bb.putFloat(ob.rules.costModifierEngines.toFloat)
     }
 
     // Allies

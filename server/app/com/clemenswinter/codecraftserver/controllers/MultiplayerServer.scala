@@ -6,7 +6,6 @@ import cwinter.codecraft.core.api._
 import cwinter.codecraft.core.game._
 import akka.pattern.ask
 import akka.util.Timeout
-import cwinter.codecraft.util.maths
 import play.api.inject.ApplicationLifecycle
 
 import scala.concurrent.duration._
@@ -35,6 +34,7 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
                 customMap: Option[MapSettings],
                 rules: SpecialRules): Integer =
     synchronized {
+      println(f"$rules")
       val initialDrones = customMap.map(m => (m.player1Drones.size, m.player2Drones.size)).getOrElse((1, 1))
       val maxGameLength = maxTicks.getOrElse(3 * 60 * 60)
       val mapWidth = customMap.map(_.mapWidth).getOrElse(6000)
