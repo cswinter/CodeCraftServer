@@ -26,7 +26,7 @@ case class ObsConfig(
   globalDrones: Int,
   tiles: Int,
   relativePositions: Boolean,
-  extraBuildActions: Seq[Int], // Number of modules for custom build actions
+  extraBuildActions: Seq[Seq[Int]], // Number of each modules for custom build actions
   obsLastAction: Boolean,
   lastSeen: Boolean,
   isVisible: Boolean,
@@ -74,11 +74,11 @@ class Application @Inject()(
       val rules = SpecialRules(
         mothershipDamageMultiplier,
         Array(costModifierSize1, costModifierSize2, costModifierSize3, costModifierSize4),
-        costModifierConstructor,
-        costModifierStorage,
-        costModifierShields,
-        costModifierMissiles,
-        costModifierEngines
+        costModifierConstructor = costModifierConstructor,
+        costModifierStorage = costModifierStorage,
+        costModifierShields = costModifierShields,
+        costModifierMissiles = costModifierMissiles,
+        costModifierEngines = costModifierEngines
       )
       val id = multiplayerServer.startGame(maxTicks, scriptedOpponent, idleOpponent, customMap, rules)
       Ok(f"""{"id": $id}""").as("application/json")
@@ -125,6 +125,7 @@ class Application @Inject()(
                        mapSize: Boolean,
                        ruleMsdm: Boolean,
                        ruleCosts: Boolean) = Action { implicit request =>
+    val (games, buildActions) = read[(Seq[(Int, Int)], Seq[Seq[Int]])](request.body.asJson.get.toString)
     val obsConfig =
       ObsConfig(allies,
                 drones,
@@ -140,7 +141,6 @@ class Application @Inject()(
                 mapSize,
                 ruleMsdm,
                 ruleCosts)
-    val games = read[Seq[(Int, Int)]](request.body.asJson.get.toString)
     val payload: Seq[Observation] = for ((gameID, playerID) <- games)
       yield multiplayerServer.observe(gameID, playerID, lastSeen)
     if (json) {
@@ -326,19 +326,36 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
         // 7: harvest
         val canMove = if (drone.isStunned || drone.isConstructing) 0.0f else 1.0f
         for (_ <- 0 until 6) bb.putFloat(canMove)
+        val m1MaxBuildCost = maxBuildCost(ob.rules, Seq(0, 1, 0, 0, 0))
         val canConstruct =
-          if (drone.constructors > 0 && drone.storedResources >= 5 && !drone.isConstructing) 1.0f
+          if (drone.constructors > 0 && drone.storedResources >= m1MaxBuildCost && !drone.isConstructing)
+            1.0f
           else 0.0f
         bb.putFloat(canConstruct)
         // TODO: harvest action
         bb.putFloat(0.0f)
         for (modules <- obsConfig.extraBuildActions) {
           val canConstruct =
-            if (drone.constructors > 0 && drone.storedResources >= 5 * modules && !drone.isConstructing) 1.0f
+            if (drone.constructors > 0 && drone.storedResources >= maxBuildCost(ob.rules, modules) && !drone.isConstructing)
+              1.0f
             else 0.0f
           bb.putFloat(canConstruct)
         }
       }
     }
+  }
+
+  def maxBuildCost(rules: SpecialRules, modules: Seq[Int]): Int = {
+    val Seq(storage, missile, constructor, engine, shield) = modules
+    val sizeModifier = if (modules.sum - 1 < rules.costModifierSize.length) {
+      rules.costModifierSize(modules.sum - 1)
+    } else {
+      1.0
+    }
+    ((storage * rules.costModifierStorage +
+      missile * rules.costModifierMissiles +
+      constructor * rules.costModifierConstructor +
+      engine * rules.costModifierEngines +
+      shield * rules.costModifierShields) * sizeModifier * 5.0).ceil.toInt
   }
 }
