@@ -34,7 +34,6 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
                 customMap: Option[MapSettings],
                 rules: SpecialRules): Integer =
     synchronized {
-      println(f"$rules")
       val initialDrones = customMap.map(m => (m.player1Drones.size, m.player2Drones.size)).getOrElse((1, 1))
       val maxGameLength = maxTicks.getOrElse(3 * 60 * 60)
       val mapWidth = customMap.map(_.mapWidth).getOrElse(6000)
@@ -46,10 +45,8 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
         Seq.fill(initialDrones._1)(new PassiveDroneController(player1, Promise.successful(DoNothing)))
       var player2: Option[PlayerController] = None
       if (scriptedOpponent && idleOpponent) {
-        println("AFK")
         controllers ++= Seq.fill(initialDrones._2)(new AFK())
       } else if (scriptedOpponent && !idleOpponent) {
-        println("level7")
         controllers ++= Seq.fill(initialDrones._2)(TheGameMaster.level7AI())
       } else {
         val p2 =
@@ -175,7 +172,8 @@ class PassiveDroneController(
 
     for (spec <- action.buildDrone) {
       val droneSpec = DroneSpec(spec(0), spec(1), spec(2), spec(3), spec(4))
-      if (droneSpec.resourceCost <= storedResources) buildDrone(new PassiveDroneController(state), droneSpec)
+      if (Util.maxBuildCost(state.rules, spec) <= storedResources)
+        buildDrone(new PassiveDroneController(state), droneSpec)
     }
 
     if (action.move && action.turn == 0) {
