@@ -74,7 +74,7 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
             m.symmetric
         )
       )
-      val simulator = server.startLocalGame(controllers, winCondition, map, rules)
+      val simulator = server.startLocalGame(controllers, winCondition, map, rules, 24.hours)
       gameID += 1
       val playerControllers = player2 match {
         case Some(p2) => Seq(player1, p2)
