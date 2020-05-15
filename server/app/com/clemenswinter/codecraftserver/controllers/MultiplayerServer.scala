@@ -98,7 +98,7 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
     }
     val observation = game.externalPlayers(playerID).observe(game.simulator, lastSeen)
     synchronized {
-      if (observation.winner.isDefined) {
+      if (observation.winner.isDefined || game.externalPlayers(playerID).stopped) {
         completedGames += (gameID, playerID) -> observation
         if (game.externalPlayers.size == 1 || completedGames.contains((gameID, 1 - playerID))) {
           games -= gameID
@@ -161,10 +161,11 @@ class PassiveDroneController(
     }
     val action = try {
       Log.debug(f"[${state.gameID}, ${state.player}] $id Waiting for action (=${this.hitpoints})")
-      Await.result(nextAction.future, Duration.Inf) // 60 seconds)
+      Await.result(nextAction.future, 1.hours)
     } catch {
       case e: TimeoutException => {
-        println("DROPPED ACTION")
+        println(f"TIMED OUT WAITING FOR ACTION, STOPPING GAME ${state.gameID}")
+        state.stopped = true
         DoNothing
       }
     }
@@ -258,6 +259,7 @@ class PlayerController(
   private val rng = new Random()
   var time = 0
   var timestep = 0
+  var stopped = false
   var tiles: Array[Array[MapTile]] = Array.tabulate(
     (mapWidth + tileWidth - 1) / tileWidth,
     (mapHeight + tileWidth - 1) / tileWidth
@@ -273,7 +275,15 @@ class PlayerController(
 
   def observe(sim: DroneWorldSimulator, lastSeen: Boolean): Observation = {
     Log.debug(f"[$gameID, $player] Awaiting obs")
-    Await.ready(observationsReady.future, Duration.Inf)
+    try {
+      Await.ready(observationsReady.future, 5.seconds)
+    } catch {
+      case e: TimeoutException => {
+        println(s"OBSERVATION TIMED OUT, STOPPING GAME $gameID")
+        stopped = true
+        sim.terminate()
+      }
+    }
     Log.debug(f"[$gameID, $player] Obs ready")
     unsafe_observe(sim, lastSeen)
   }
@@ -306,7 +316,7 @@ class PlayerController(
     Observation(
       sim.timestep,
       maxGameLength,
-      sim.winner.map(_.id),
+      if (stopped) Some(0) else sim.winner.map(_.id),
       for (d <- alliedDrones if !d.isDead)
         yield DroneObservation(d, isEnemy = false, Some(d.lastAction), 0),
       (for {
