@@ -151,9 +151,15 @@ class PassiveDroneController(
 ) extends DroneController {
   val id: Int = state.nextID()
   var lastAction: Action = Action(None, false, false, false, 0)
+  var harvesting = Option.empty[Int]
+  var currentlyHarvesting = Option.empty[MineralCrystal]
 
   override def onTick(): Unit = {
     state.updateTiles(position)
+
+    if (!isHarvesting) {
+      currentlyHarvesting = None
+    }
 
     if (missileCooldown == 0 && enemiesInSight.nonEmpty) {
       val closest = enemiesInSight.minBy(enemy => (enemy.position - position).lengthSquared)
@@ -177,6 +183,19 @@ class PassiveDroneController(
         buildDrone(new PassiveDroneController(state), droneSpec)
     }
 
+    if (constructors == 0 && storedResources > 0 && alliesInSight.nonEmpty) {
+      for {
+        ally <- alliesInSight
+        if ally.storageModules > 0 && ally.constructors > 0
+      } giveResourcesTo(ally)
+    }
+
+    harvesting match {
+      case Some(startingStore) if !isHarvesting || storedResources != startingStore =>
+        harvesting = None
+      case _ =>
+    }
+
     if (action.move && action.turn == 0) {
       moveInDirection(orientation)
     } else if (action.move && action.turn == -1) {
@@ -191,17 +210,14 @@ class PassiveDroneController(
       halt()
     }
 
-    if (!isHarvesting && action.harvest && mineralsInSight.nonEmpty && storedResources < storageModules * 7) {
+    if (!isHarvesting && mineralsInSight.nonEmpty && storedResources < storageModules * 7) {
       val closest =
         mineralsInSight.minBy(mc => (mc.position - position).lengthSquared)
+      currentlyHarvesting = Some(closest)
       if (isInHarvestingRange(closest)) harvest(closest)
     }
-
-    if (constructors == 0 && storedResources > 0 && alliesInSight.nonEmpty) {
-      for {
-        ally <- alliesInSight
-        if ally.storageModules > 0 && ally.constructors > 0
-      } giveResourcesTo(ally)
+    if (action.harvest && currentlyHarvesting.isDefined) {
+      harvesting = Some(storedResources)
     }
 
     Log.debug(
@@ -318,7 +334,15 @@ class PlayerController(
       maxGameLength,
       if (stopped) Some(0) else sim.winner.map(_.id),
       for (d <- alliedDrones if !d.isDead)
-        yield DroneObservation(d, isEnemy = false, Some(d.lastAction), 0),
+        yield
+          DroneObservation(
+            d,
+            isEnemy = false,
+            Some(d.lastAction),
+            0,
+            d.mineralsInSight.exists(m => d.isInHarvestingRange(m)),
+            d.harvesting.exists(d.isHarvesting && _ == d.storedResources)
+          ),
       (for {
         d <- enemyDrones
         if d.isVisible
@@ -333,7 +357,11 @@ class PlayerController(
         d <- sim.dronesFor(enemyPlayer)
       } yield DroneObservation(d, isEnemy = true, None, sim.timestep - timeLastSeen.getOrElse(d, 0)),
       for (m <- minerals if !m.harvested)
-        yield MineralObservation(m.position.x, m.position.y, m.size),
+        yield
+          MineralObservation(m.position.x,
+                             m.position.y,
+                             m.size,
+                             alliedDrones.exists(_.currentlyHarvesting.contains(m))),
       alliedDrones
         .filter(!_.isDead)
         .map(score)
@@ -443,14 +471,17 @@ case class DroneObservation(
   lastAction: Option[Action],
   missileCooldown: Int,
   timeSinceVisible: Int,
-  isVisible: Boolean
+  isVisible: Boolean,
+  canHarvest: Boolean
 )
 
 object DroneObservation {
   def apply(d: Drone,
             isEnemy: Boolean,
             lastAction: Option[Action],
-            timeSinceVisible: Int): DroneObservation = {
+            timeSinceVisible: Int,
+            canHarvest: Boolean = false,
+            currentlyHarvesting: Boolean = false): DroneObservation = {
     DroneObservation(
       if (d.isVisible) d.position.x else d.lastKnownPosition.x,
       if (d.isVisible) d.position.y else d.lastKnownPosition.y,
@@ -465,12 +496,13 @@ object DroneObservation {
       if (d.isVisible) d.storedResources else 0,
       if (d.isVisible) d.isConstructing else false,
       if (d.isVisible) d.isHarvesting else false,
-      if (d.isVisible) d.isStunned else false,
+      if (d.isVisible) d.isStunned || currentlyHarvesting else false,
       isEnemy,
       lastAction,
       if (d.isVisible && d.missileBatteries > 0) d.missileCooldown else GameConstants.MissileCooldown,
       timeSinceVisible,
-      d.isVisible
+      d.isVisible,
+      canHarvest && !currentlyHarvesting
     )
   }
 }
@@ -478,7 +510,8 @@ object DroneObservation {
 case class MineralObservation(
   xPos: Float,
   yPos: Float,
-  size: Int
+  size: Int,
+  claimed: Boolean
 )
 
 case class Action(

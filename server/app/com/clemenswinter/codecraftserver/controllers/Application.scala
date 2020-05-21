@@ -33,7 +33,9 @@ case class ObsConfig(
   abstime: Boolean,
   mapSize: Boolean,
   ruleMsdm: Boolean,
-  ruleCosts: Boolean
+  ruleCosts: Boolean,
+  harvestAction: Boolean,
+  mineralAvailable: Boolean
 ) {
   def rules: Int = (if (ruleMsdm) 1 else 0) + (if (ruleCosts) 9 else 0)
 }
@@ -124,23 +126,29 @@ class Application @Inject()(
                        abstime: Boolean,
                        mapSize: Boolean,
                        ruleMsdm: Boolean,
-                       ruleCosts: Boolean) = Action { implicit request =>
+                       ruleCosts: Boolean,
+                       harvestAction: Boolean,
+                       mineralClaims: Boolean) = Action { implicit request =>
     val (games, buildActions) = read[(Seq[(Int, Int)], Seq[Seq[Int]])](request.body.asJson.get.toString)
     val obsConfig =
-      ObsConfig(allies,
-                drones,
-                minerals,
-                globalDrones,
-                tiles,
-                relativePositions,
-                buildActions,
-                obsLastAction,
-                lastSeen,
-                isVisible,
-                abstime,
-                mapSize,
-                ruleMsdm,
-                ruleCosts)
+      ObsConfig(
+        allies,
+        drones,
+        minerals,
+        globalDrones,
+        tiles,
+        relativePositions,
+        buildActions,
+        obsLastAction,
+        lastSeen,
+        isVisible,
+        abstime,
+        mapSize,
+        ruleMsdm,
+        ruleCosts,
+        harvestAction,
+        mineralClaims
+      )
     val payload: Seq[Observation] = for ((gameID, playerID) <- games)
       yield multiplayerServer.observe(gameID, playerID, lastSeen)
     if (json) {
@@ -180,7 +188,7 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
   private val allyDroneFeat = 15 + (if (obsConfig.obsLastAction) 8 else 0) +
     (if (obsConfig.lastSeen) 2 else 0) + (if (obsConfig.isVisible) 1 else 0)
   private val enemyDroneFeat = 15 + (if (obsConfig.lastSeen) 2 else 0) + (if (obsConfig.isVisible) 1 else 0)
-  private val mineralFeat = 3
+  private val mineralFeat = if (obsConfig.mineralAvailable) 4 else 3
   private val tileFeat = 4
   private val enemies = obsConfig.drones - obsConfig.allies
   private val totalObjectFeat =
@@ -298,6 +306,9 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
     bb.putFloat(m.xPos)
     bb.putFloat(m.yPos)
     bb.putFloat(m.size)
+    if (obsConfig.mineralAvailable) {
+      bb.putFloat(if (m.claimed) 0.0f else 1.0f)
+    }
   }
 
   def serializeTile(time: Int, tmax: Int)(t: MapTile): Unit = {
@@ -332,8 +343,7 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
             1.0f
           else 0.0f
         bb.putFloat(canConstruct)
-        // TODO: harvest action
-        bb.putFloat(0.0f)
+        bb.putFloat(if (drone.canHarvest) 1.0f else 0.0f)
         for (modules <- obsConfig.extraBuildActions) {
           val canConstruct =
             if (drone.constructors > 0 && drone.storedResources >= Util.maxBuildCost(ob.rules, modules) && !drone.isConstructing)
