@@ -81,7 +81,6 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
         case _ => Seq(player1)
       }
       games += gameID -> Game(simulator, playerControllers)
-      println(f"Started game $gameID (${playerControllers.size} players). Running games: ${games.size}")
       gameID
     }
 
@@ -213,8 +212,10 @@ class PassiveDroneController(
     if (!isHarvesting && mineralsInSight.nonEmpty && storedResources < storageModules * 7) {
       val closest =
         mineralsInSight.minBy(mc => (mc.position - position).lengthSquared)
-      currentlyHarvesting = Some(closest)
-      if (isInHarvestingRange(closest)) harvest(closest)
+      if (isInHarvestingRange(closest)) {
+        harvest(closest)
+        currentlyHarvesting = Some(closest)
+      }
     }
     if (action.harvest && currentlyHarvesting.isDefined) {
       harvesting = Some(storedResources)
@@ -274,7 +275,6 @@ class PlayerController(
   @volatile var step0 = true
   private val rng = new Random()
   var time = 0
-  var timestep = 0
   var stopped = false
   var tiles: Array[Array[MapTile]] = Array.tabulate(
     (mapWidth + tileWidth - 1) / tileWidth,
@@ -328,21 +328,23 @@ class PlayerController(
     }
 
     enemyDrones = enemyDrones.filterNot(_.isDead)
-    timestep = sim.timestep
+    val timestep = sim.timestep
     Observation(
       sim.timestep,
       maxGameLength,
       if (stopped) Some(0) else sim.winner.map(_.id),
       for (d <- alliedDrones if !d.isDead)
-        yield
+        yield {
+          val curentlyHarvesting = d.harvesting.exists(d.isHarvesting && _ == d.storedResources)
           DroneObservation(
             d,
             isEnemy = false,
             Some(d.lastAction),
             0,
             d.mineralsInSight.exists(m => d.isInHarvestingRange(m)),
-            d.harvesting.exists(d.isHarvesting && _ == d.storedResources)
-          ),
+            curentlyHarvesting
+          )
+        },
       (for {
         d <- enemyDrones
         if d.isVisible
@@ -424,7 +426,7 @@ class PlayerController(
     // assert(tile.centerY - tileWidth / 2 <= pos.y)
     // assert(pos.y <= tile.centerY + tileWidth / 2)
 
-    tile.lastVisitedTime = timestep + 10
+    tile.lastVisitedTime = time
   }
 }
 
@@ -496,7 +498,7 @@ object DroneObservation {
       if (d.isVisible) d.storedResources else 0,
       if (d.isVisible) d.isConstructing else false,
       if (d.isVisible) d.isHarvesting else false,
-      if (d.isVisible) d.isStunned || currentlyHarvesting else false,
+      if (d.isVisible) d.isStunned else false,
       isEnemy,
       lastAction,
       if (d.isVisible && d.missileBatteries > 0) d.missileCooldown else GameConstants.MissileCooldown,

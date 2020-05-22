@@ -335,8 +335,14 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
         // 0-5: turn/movement (4 is no turn, no movement)
         // 6: build [0,1,0,0,0] drone (if minerals > 5)
         // 7: harvest
-        val canMove = if (drone.isStunned || drone.isConstructing) 0.0f else 1.0f
-        for (_ <- 0 until 6) bb.putFloat(canMove)
+        val canMove = if (drone.isStunned || drone.isConstructing || drone.isHarvesting) 0.0f else 1.0f
+        for (i <- 0 until 6) {
+          // Can always do nothing
+          if (i == 4)
+            bb.putFloat(1.0f)
+          else
+            bb.putFloat(canMove)
+        }
         val m1MaxBuildCost = Util.maxBuildCost(ob.rules, Seq(0, 1, 0, 0, 0))
         val canConstruct =
           if (drone.constructors > 0 && drone.storedResources >= m1MaxBuildCost && !drone.isConstructing)
