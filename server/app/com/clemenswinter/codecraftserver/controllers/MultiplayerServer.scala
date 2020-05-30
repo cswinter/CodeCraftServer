@@ -152,6 +152,7 @@ class PassiveDroneController(
   var lastAction: Action = Action(None, false, false, false, 0)
   var harvesting = Option.empty[Int]
   var currentlyHarvesting = Option.empty[MineralCrystal]
+  var buildActionLocked = true
 
   override def onTick(): Unit = {
     state.updateTiles(position)
@@ -248,6 +249,14 @@ class PassiveDroneController(
 
   def setAction(action: Action): Unit = {
     // WORKAROUND, probably needed because of a race for drone spawn events.
+    if (action.lockBuildAction) {
+      buildActionLocked = true
+      showText("Locking")
+    }
+    if (action.unlockBuildAction) {
+      buildActionLocked = false
+      showText("Unlocking")
+    }
     lastAction = action
     if (!nextAction.isCompleted) {
       nextAction.success(action)
@@ -342,7 +351,8 @@ class PlayerController(
             Some(d.lastAction),
             0,
             d.mineralsInSight.exists(m => d.isInHarvestingRange(m)),
-            curentlyHarvesting
+            curentlyHarvesting,
+            buildActionLocked = d.buildActionLocked
           )
         },
       (for {
@@ -350,14 +360,28 @@ class PlayerController(
         if d.isVisible
       } yield {
         timeLastSeen += d -> sim.timestep
-        DroneObservation(d, isEnemy = true, None, sim.timestep - timeLastSeen.getOrElse(d, 0))
+        DroneObservation(d,
+                         isEnemy = true,
+                         None,
+                         sim.timestep - timeLastSeen.getOrElse(d, 0),
+                         buildActionLocked = false)
       }) ++ (for {
         d <- enemyDrones
         if !d.isVisible && lastSeen
-      } yield DroneObservation(d, isEnemy = true, None, sim.timestep - timeLastSeen.getOrElse(d, 0))),
+      } yield
+        DroneObservation(d,
+                         isEnemy = true,
+                         None,
+                         sim.timestep - timeLastSeen.getOrElse(d, 0),
+                         buildActionLocked = true)),
       for {
         d <- sim.dronesFor(enemyPlayer)
-      } yield DroneObservation(d, isEnemy = true, None, sim.timestep - timeLastSeen.getOrElse(d, 0)),
+      } yield
+        DroneObservation(d,
+                         isEnemy = true,
+                         None,
+                         sim.timestep - timeLastSeen.getOrElse(d, 0),
+                         buildActionLocked = true),
       for (m <- minerals if !m.harvested)
         yield
           MineralObservation(m.position.x,
@@ -474,7 +498,8 @@ case class DroneObservation(
   missileCooldown: Int,
   timeSinceVisible: Int,
   isVisible: Boolean,
-  canHarvest: Boolean
+  canHarvest: Boolean,
+  buildActionLocked: Boolean
 )
 
 object DroneObservation {
@@ -483,7 +508,8 @@ object DroneObservation {
             lastAction: Option[Action],
             timeSinceVisible: Int,
             canHarvest: Boolean = false,
-            currentlyHarvesting: Boolean = false): DroneObservation = {
+            currentlyHarvesting: Boolean = false,
+            buildActionLocked: Boolean): DroneObservation = {
     DroneObservation(
       if (d.isVisible) d.position.x else d.lastKnownPosition.x,
       if (d.isVisible) d.position.y else d.lastKnownPosition.y,
@@ -504,7 +530,8 @@ object DroneObservation {
       if (d.isVisible && d.missileBatteries > 0) d.missileCooldown else GameConstants.MissileCooldown,
       timeSinceVisible,
       d.isVisible,
-      canHarvest && !currentlyHarvesting
+      canHarvest && !currentlyHarvesting,
+      buildActionLocked
     )
   }
 }
@@ -521,7 +548,9 @@ case class Action(
   move: Boolean,
   harvest: Boolean,
   transfer: Boolean,
-  turn: Int /* -1, 0, 1 */
+  turn: Int /* -1, 0, 1 */,
+  unlockBuildAction: Boolean = false,
+  lockBuildAction: Boolean = false
 ) {
   def toInt: Int = {
     if (buildDrone.isDefined) {

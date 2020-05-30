@@ -35,7 +35,8 @@ case class ObsConfig(
   ruleMsdm: Boolean,
   ruleCosts: Boolean,
   harvestAction: Boolean,
-  mineralAvailable: Boolean
+  mineralAvailable: Boolean,
+  lockBuildAction: Boolean
 ) {
   def rules: Int = (if (ruleMsdm) 1 else 0) + (if (ruleCosts) 9 else 0)
 }
@@ -128,7 +129,8 @@ class Application @Inject()(
                        ruleMsdm: Boolean,
                        ruleCosts: Boolean,
                        harvestAction: Boolean,
-                       mineralClaims: Boolean) = Action { implicit request =>
+                       mineralClaims: Boolean,
+                       lockBuildAction: Boolean) = Action { implicit request =>
     val (games, buildActions) = read[(Seq[(Int, Int)], Seq[Seq[Int]])](request.body.asJson.get.toString)
     val obsConfig =
       ObsConfig(
@@ -147,7 +149,8 @@ class Application @Inject()(
         ruleMsdm,
         ruleCosts,
         harvestAction,
-        mineralClaims
+        mineralClaims,
+        lockBuildAction
       )
     val payload: Seq[Observation] = for ((gameID, playerID) <- games)
       yield multiplayerServer.observe(gameID, playerID, lastSeen)
@@ -186,8 +189,11 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
   private val globalFeat = 2 + (if (obsConfig.mapSize) 2 else 0) + (if (obsConfig.abstime) 2 else 0) + obsConfig.rules
   private val extraFeat = 5 // Unobserved features such as score, winner, ms health
   private val allyDroneFeat = 15 + (if (obsConfig.obsLastAction) 8 else 0) +
-    (if (obsConfig.lastSeen) 2 else 0) + (if (obsConfig.isVisible) 1 else 0)
-  private val enemyDroneFeat = 15 + (if (obsConfig.lastSeen) 2 else 0) + (if (obsConfig.isVisible) 1 else 0)
+    (if (obsConfig.lastSeen) 2 else 0) + (if (obsConfig.isVisible) 1 else 0) +
+    (if (obsConfig.lockBuildAction) 1 else 0)
+  private val enemyDroneFeat = 15 + (if (obsConfig.lastSeen) 2 else 0) +
+    (if (obsConfig.isVisible) 1 else 0) +
+    (if (obsConfig.lockBuildAction) 1 else 0)
   private val mineralFeat = if (obsConfig.mineralAvailable) 4 else 3
   private val tileFeat = 4
   private val enemies = obsConfig.drones - obsConfig.allies
@@ -196,7 +202,7 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
       2 * enemyDroneFeat * enemies +
       mineralFeat * obsConfig.minerals +
       tileFeat * obsConfig.tiles
-  private val naction = 8 + obsConfig.extraBuildActions.size
+  private val naction = 8 + obsConfig.extraBuildActions.size + (if (obsConfig.lockBuildAction) 2 else 0)
   private val actionMaskFeat = obsConfig.allies * naction
   private val size = obs.length * (globalFeat + totalObjectFeat + extraFeat + actionMaskFeat)
   private val bb: ByteBuffer = ByteBuffer.allocate(4 * size)
@@ -300,6 +306,9 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
         }
       }
     }
+    if (obsConfig.lockBuildAction) {
+      bb.putFloat(if (drone.buildActionLocked) 1.0f else 0.0f)
+    }
   }
 
   def serializeMineral(m: MineralObservation): Unit = {
@@ -344,18 +353,33 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
             bb.putFloat(canMove)
         }
         val m1MaxBuildCost = Util.maxBuildCost(ob.rules, Seq(0, 1, 0, 0, 0))
-        val canConstruct =
-          if (drone.constructors > 0 && drone.storedResources >= m1MaxBuildCost && !drone.isConstructing)
+        val canConstruct1m =
+          if (drone.constructors > 0 &&
+              drone.storedResources >= m1MaxBuildCost &&
+              !drone.isConstructing &&
+              !(drone.buildActionLocked && obsConfig.lockBuildAction))
             1.0f
           else 0.0f
-        bb.putFloat(canConstruct)
+        bb.putFloat(canConstruct1m)
         bb.putFloat(if (drone.canHarvest) 1.0f else 0.0f)
         for (modules <- obsConfig.extraBuildActions) {
           val canConstruct =
-            if (drone.constructors > 0 && drone.storedResources >= Util.maxBuildCost(ob.rules, modules) && !drone.isConstructing)
+            if (drone.constructors > 0 &&
+                drone.storedResources >= Util.maxBuildCost(ob.rules, modules) &&
+                !drone.isConstructing &&
+                !(drone.buildActionLocked && obsConfig.lockBuildAction))
               1.0f
             else 0.0f
           bb.putFloat(canConstruct)
+        }
+        if (obsConfig.lockBuildAction) {
+          if (drone.constructors == 0) {
+            bb.putFloat(0.0f)
+            bb.putFloat(0.0f)
+          } else {
+            bb.putFloat(if (drone.buildActionLocked) 0.0f else 1.0f)
+            bb.putFloat(if (drone.buildActionLocked) 1.0f else 0.0f)
+          }
         }
       }
     }
