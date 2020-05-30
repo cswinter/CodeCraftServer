@@ -32,63 +32,83 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
                 scriptedOpponent: Boolean,
                 idleOpponent: Boolean,
                 customMap: Option[MapSettings],
-                rules: SpecialRules): Integer =
-    synchronized {
-      val initialDrones = customMap.map(m => (m.player1Drones.size, m.player2Drones.size)).getOrElse((1, 1))
-      val maxGameLength = maxTicks.getOrElse(3 * 60 * 60)
-      val mapWidth = customMap.map(_.mapWidth).getOrElse(6000)
-      val mapHeight = customMap.map(_.mapHeight).getOrElse(4000)
-      val tileWidth = 400
-      val player1 =
-        new PlayerController(maxGameLength, BluePlayer, gameID + 1, mapWidth, mapHeight, tileWidth, rules)
-      var controllers: Seq[DroneControllerBase] =
-        Seq.fill(initialDrones._1)(new PassiveDroneController(player1, Promise.successful(DoNothing)))
-      var player2: Option[PlayerController] = None
-      if (scriptedOpponent && idleOpponent) {
-        controllers ++= Seq.fill(initialDrones._2)(new AFK())
-      } else if (scriptedOpponent && !idleOpponent) {
-        controllers ++= Seq.fill(initialDrones._2)(TheGameMaster.level7AI())
-      } else {
-        val p2 =
-          new PlayerController(maxGameLength,
-                               OrangePlayer,
-                               gameID + 1,
-                               mapWidth,
-                               mapHeight,
-                               tileWidth,
-                               rules)
-        player2 = Some(p2)
-        controllers ++= Seq.fill(initialDrones._2)(
-          new PassiveDroneController(p2, Promise.successful(DoNothing)))
-      }
-      val winCondition = Seq(DestroyAllEnemies, LargestFleet(maxGameLength))
-      val map = customMap.map(
-        m =>
-          (
-            new Rectangle(m.mapWidth / 2 - m.mapWidth,
-                          m.mapWidth / 2,
-                          m.mapHeight / 2 - m.mapHeight,
-                          m.mapHeight / 2),
-            m.player1Drones.map(_.toSpawn(BluePlayer)) ++ m.player2Drones.map(_.toSpawn(OrangePlayer)),
-            m.minerals,
-            m.symmetric
-        )
-      )
-      val simulator = server.startLocalGame(controllers, winCondition, map, rules, 24.hours)
-      gameID += 1
-      val playerControllers = player2 match {
-        case Some(p2) => Seq(player1, p2)
-        case _ => Seq(player1)
-      }
-      games += gameID -> Game(simulator, playerControllers)
-      gameID
+                rules: SpecialRules): Integer = synchronized {
+    val initialDrones = customMap.map(m => (m.player1Drones.size, m.player2Drones.size)).getOrElse((1, 1))
+    val maxGameLength = maxTicks.getOrElse(3 * 60 * 60)
+    val mapWidth = customMap.map(_.mapWidth).getOrElse(6000)
+    val mapHeight = customMap.map(_.mapHeight).getOrElse(4000)
+    val tileWidth = 400
+    val player1 =
+      new PlayerController(maxGameLength, BluePlayer, gameID + 1, mapWidth, mapHeight, tileWidth, rules)
+    var controllers: Seq[DroneControllerBase] =
+      Seq.fill(initialDrones._1)(new PassiveDroneController(player1, Promise.successful(DoNothing)))
+    var player2: Option[PlayerController] = None
+    if (scriptedOpponent && idleOpponent) {
+      controllers ++= Seq.fill(initialDrones._2)(new AFK())
+    } else if (scriptedOpponent && !idleOpponent) {
+      controllers ++= Seq.fill(initialDrones._2)(TheGameMaster.level7AI())
+    } else {
+      val p2 =
+        new PlayerController(maxGameLength, OrangePlayer, gameID + 1, mapWidth, mapHeight, tileWidth, rules)
+      player2 = Some(p2)
+      controllers ++= Seq.fill(initialDrones._2)(
+        new PassiveDroneController(p2, Promise.successful(DoNothing)))
     }
+    val winCondition = Seq(DestroyAllEnemies, LargestFleet(maxGameLength))
+    val map = customMap.map(
+      m =>
+        (
+          new Rectangle(m.mapWidth / 2 - m.mapWidth,
+                        m.mapWidth / 2,
+                        m.mapHeight / 2 - m.mapHeight,
+                        m.mapHeight / 2),
+          m.player1Drones.map(_.toSpawn(BluePlayer)) ++ m.player2Drones.map(_.toSpawn(OrangePlayer)),
+          Left(m.minerals),
+          m.symmetric
+      )
+    )
+    val simulator = server.startLocalGame(controllers, winCondition, map, rules, 24.hours)
+    gameID += 1
+    val playerControllers = player2 match {
+      case Some(p2) => Seq(player1, p2)
+      case _ => Seq(player1)
+    }
+    games += gameID -> Game(simulator, playerControllers)
+    gameID
+  }
 
   val margin = 50
+
   def randomStartPos(size: Rectangle): Vector2 = Vector2(
     size.xMin + margin + (size.xMax - size.yMin + 2 * margin) * rng.nextFloat(),
     size.yMin + margin + (size.yMax - size.yMin + 2 * margin) * rng.nextFloat()
   )
+
+  def startDemo() = {
+    new Thread {
+      override def run() {
+        while (true) {
+          _startDemo()
+          Thread.sleep(2000)
+        }
+      }
+    }.start()
+    0
+  }
+
+  def _startDemo(): Int = synchronized {
+    val (controllers, map) = Demo.create()
+    val simulator = server.startLocalGame(
+      controllers,
+      Seq(DestroyAllEnemies, LargestFleet(3 * 60 * 60)),
+      Some(map),
+      SpecialRules.default,
+      24.hours
+    )
+    gameID += 1
+    games += gameID -> Game(simulator, Seq.empty)
+    gameID
+  }
 
   def observe(gameID: Int, playerID: Int, lastSeen: Boolean): Observation = {
     val game = synchronized {

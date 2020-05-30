@@ -87,6 +87,11 @@ class Application @Inject()(
       Ok(f"""{"id": $id}""").as("application/json")
     }
 
+  def startDemo() = Action {
+    val id = multiplayerServer.startDemo()
+    Ok(f"""{"id": $id}""").as("application/json")
+  }
+
   def act(gameID: Int, playerID: Int) = Action { implicit request =>
     val action = read[Action](request.body.asJson.get.toString)
     multiplayerServer.act(gameID, playerID, Seq(action))

@@ -15,7 +15,10 @@ object Index {
           <form action="start-game" method="post">
             <input type="submit" name="start-game" value="Start Game" />
           </form>
-        </body>
+          <form action="start-demo" method="post">
+ |          <input type="submit" name="start-demo" value="Start Demo" />
+ |        </form>
+ |      </body>
       </html>
       """
   }
