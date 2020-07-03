@@ -12,7 +12,7 @@ object Idle extends Command
 
 class DemoController(
   commands: Seq[Command],
-  delay: Int = 20
+  delay: Int = 50
 ) extends DroneController {
   var i = 0
 
@@ -77,7 +77,11 @@ object Demo {
       // DEMO 1: harvest (1s)
       (
         StartingDrone(-500, 1000, storageModules = 1),
-        new DemoController(Seq(MoveTo(Vector2(-50, 1000))))
+        new DemoController(
+          Seq(MoveTo(Vector2(-50, 1000))) ++
+            Seq.fill(50)(Idle) ++
+            Seq(MoveTo(Vector2(-500, 1000)))
+        )
       ),
       // DEMO 2: give resources, produce (1s3c, 1s)
       (

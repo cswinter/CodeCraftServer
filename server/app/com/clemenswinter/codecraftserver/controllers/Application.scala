@@ -58,8 +58,7 @@ class Application @Inject()(
   def startGame(
     maxTicks: Option[Int],
     actionDelay: Int,
-    scriptedOpponent: Boolean,
-    idleOpponent: Boolean,
+    scriptedOpponent: String,
     mothershipDamageMultiplier: Double,
     costModifierSize1: Double,
     costModifierSize2: Double,
@@ -83,7 +82,7 @@ class Application @Inject()(
         costModifierMissiles = costModifierMissiles,
         costModifierEngines = costModifierEngines
       )
-      val id = multiplayerServer.startGame(maxTicks, scriptedOpponent, idleOpponent, customMap, rules)
+      val id = multiplayerServer.startGame(maxTicks, scriptedOpponent, customMap, rules)
       Ok(f"""{"id": $id}""").as("application/json")
     }
 

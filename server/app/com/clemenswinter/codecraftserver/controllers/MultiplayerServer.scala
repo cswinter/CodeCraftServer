@@ -29,8 +29,7 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
   val rng = new Random()
 
   def startGame(maxTicks: Option[Int],
-                scriptedOpponent: Boolean,
-                idleOpponent: Boolean,
+                scriptedOpponent: String,
                 customMap: Option[MapSettings],
                 rules: SpecialRules): Integer = synchronized {
     val initialDrones = customMap.map(m => (m.player1Drones.size, m.player2Drones.size)).getOrElse((1, 1))
@@ -43,11 +42,20 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
     var controllers: Seq[DroneControllerBase] =
       Seq.fill(initialDrones._1)(new PassiveDroneController(player1, Promise.successful(DoNothing)))
     var player2: Option[PlayerController] = None
-    if (scriptedOpponent && idleOpponent) {
+    if (scriptedOpponent == "idle") {
       controllers ++= Seq.fill(initialDrones._2)(new AFK())
-    } else if (scriptedOpponent && !idleOpponent) {
-      controllers ++= Seq.fill(initialDrones._2)(TheGameMaster.level7AI())
+    } else if (scriptedOpponent == "destroyer") {
+      controllers ++= Seq.fill(initialDrones._2)(TheGameMaster.destroyerAI())
+    } else if (scriptedOpponent == "replicator") {
+      controllers ++= Seq.fill(initialDrones._2)(TheGameMaster.replicatorAI())
+    } else if (scriptedOpponent == "greedy_replicator") {
+      controllers ++= Seq.fill(initialDrones._2)(TheGameMaster.replicatorAI(greedy = true))
+    } else if (scriptedOpponent == "aggressive_replicator") {
+      controllers ++= Seq.fill(initialDrones._2)(TheGameMaster.replicatorAI(aggressive = true))
+    } else if (scriptedOpponent == "confident_replicator") {
+      controllers ++= Seq.fill(initialDrones._2)(TheGameMaster.replicatorAI(confident = true))
     } else {
+      assert(scriptedOpponent == "none")
       val p2 =
         new PlayerController(maxGameLength, OrangePlayer, gameID + 1, mapWidth, mapHeight, tileWidth, rules)
       player2 = Some(p2)
