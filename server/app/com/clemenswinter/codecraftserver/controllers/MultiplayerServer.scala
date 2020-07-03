@@ -329,7 +329,7 @@ class PlayerController(
   def observe(sim: DroneWorldSimulator, lastSeen: Boolean): Observation = {
     Log.debug(f"[$gameID, $player] Awaiting obs")
     try {
-      Await.ready(observationsReady.future, 5.seconds)
+      Await.ready(observationsReady.future, 30.seconds)
     } catch {
       case e: TimeoutException => {
         println(s"OBSERVATION TIMED OUT, STOPPING GAME $gameID")
