@@ -31,14 +31,24 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
   def startGame(maxTicks: Option[Int],
                 scriptedOpponent: String,
                 customMap: Option[MapSettings],
-                rules: SpecialRules): Integer = synchronized {
+                rules: SpecialRules,
+                allowHarvesting: Boolean,
+                forceHarvesting: Boolean): Integer = synchronized {
     val initialDrones = customMap.map(m => (m.player1Drones.size, m.player2Drones.size)).getOrElse((1, 1))
     val maxGameLength = maxTicks.getOrElse(3 * 60 * 60)
     val mapWidth = customMap.map(_.mapWidth).getOrElse(6000)
     val mapHeight = customMap.map(_.mapHeight).getOrElse(4000)
     val tileWidth = 400
     val player1 =
-      new PlayerController(maxGameLength, BluePlayer, gameID + 1, mapWidth, mapHeight, tileWidth, rules)
+      new PlayerController(maxGameLength,
+                           BluePlayer,
+                           gameID + 1,
+                           mapWidth,
+                           mapHeight,
+                           tileWidth,
+                           rules,
+                           allowHarvesting,
+                           forceHarvesting)
     var controllers: Seq[DroneControllerBase] =
       Seq.fill(initialDrones._1)(new PassiveDroneController(player1, Promise.successful(DoNothing)))
     var player2: Option[PlayerController] = None
@@ -57,7 +67,15 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
     } else {
       assert(scriptedOpponent == "none")
       val p2 =
-        new PlayerController(maxGameLength, OrangePlayer, gameID + 1, mapWidth, mapHeight, tileWidth, rules)
+        new PlayerController(maxGameLength,
+                             OrangePlayer,
+                             gameID + 1,
+                             mapWidth,
+                             mapHeight,
+                             tileWidth,
+                             rules,
+                             allowHarvesting,
+                             forceHarvesting)
       player2 = Some(p2)
       controllers ++= Seq.fill(initialDrones._2)(
         new PassiveDroneController(p2, Promise.successful(DoNothing)))
@@ -218,10 +236,12 @@ class PassiveDroneController(
       } giveResourcesTo(ally)
     }
 
-    harvesting match {
-      case Some(startingStore) if !isHarvesting || storedResources != startingStore =>
-        harvesting = None
-      case _ =>
+    if (state.allowHarvesting) {
+      harvesting match {
+        case Some(startingStore) if !isHarvesting || storedResources != startingStore =>
+          harvesting = None
+        case _ =>
+      }
     }
 
     if (action.move && action.turn == 0) {
@@ -238,7 +258,7 @@ class PassiveDroneController(
       halt()
     }
 
-    if (!isHarvesting && mineralsInSight.nonEmpty && storedResources < storageModules * 7) {
+    if (!isHarvesting && mineralsInSight.nonEmpty && storedResources < storageModules * 7 && state.allowHarvesting) {
       val closest =
         mineralsInSight.minBy(mc => (mc.position - position).lengthSquared)
       if (isInHarvestingRange(closest)) {
@@ -301,7 +321,9 @@ class PlayerController(
   val mapWidth: Int,
   val mapHeight: Int,
   val tileWidth: Int,
-  val rules: SpecialRules
+  val rules: SpecialRules,
+  val allowHarvesting: Boolean,
+  val forceHarvesting: Boolean
 ) extends MetaController {
   @volatile var alliedDrones = Seq.empty[PassiveDroneController]
   @volatile var enemyDrones = Seq.empty[Drone]
@@ -329,7 +351,7 @@ class PlayerController(
   def observe(sim: DroneWorldSimulator, lastSeen: Boolean): Observation = {
     Log.debug(f"[$gameID, $player] Awaiting obs")
     try {
-      Await.ready(observationsReady.future, 30.seconds)
+      Await.ready(observationsReady.future, 5.seconds)
     } catch {
       case e: TimeoutException => {
         println(s"OBSERVATION TIMED OUT, STOPPING GAME $gameID")
@@ -379,7 +401,7 @@ class PlayerController(
             Some(d.lastAction),
             0,
             d.mineralsInSight.exists(m => d.isInHarvestingRange(m)),
-            curentlyHarvesting,
+            curentlyHarvesting || (d.isHarvesting && forceHarvesting),
             buildActionLocked = d.buildActionLocked
           )
         },
@@ -527,7 +549,8 @@ case class DroneObservation(
   timeSinceVisible: Int,
   isVisible: Boolean,
   canHarvest: Boolean,
-  buildActionLocked: Boolean
+  buildActionLocked: Boolean,
+  harvestLock: Boolean
 )
 
 object DroneObservation {
@@ -558,8 +581,9 @@ object DroneObservation {
       if (d.isVisible && d.missileBatteries > 0) d.missileCooldown else GameConstants.MissileCooldown,
       timeSinceVisible,
       d.isVisible,
-      canHarvest && !currentlyHarvesting,
-      buildActionLocked
+      canHarvest = canHarvest && !currentlyHarvesting,
+      buildActionLocked = buildActionLocked,
+      harvestLock = currentlyHarvesting
     )
   }
 }
