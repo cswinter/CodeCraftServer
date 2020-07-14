@@ -70,7 +70,8 @@ class Application @Inject()(
     costModifierMissiles: Double,
     costModifierEngines: Double,
     allowHarvesting: Boolean,
-    forceHarvesting: Boolean
+    forceHarvesting: Boolean,
+    randomizeIdle: Boolean
   ) =
     Action { implicit request =>
       val body = request.body.asJson.get.toString
@@ -89,7 +90,8 @@ class Application @Inject()(
                                            customMap,
                                            rules,
                                            allowHarvesting,
-                                           forceHarvesting)
+                                           forceHarvesting,
+                                           randomizeIdle)
       Ok(f"""{"id": $id}""").as("application/json")
     }
 

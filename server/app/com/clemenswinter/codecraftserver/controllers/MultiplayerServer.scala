@@ -33,7 +33,8 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
                 customMap: Option[MapSettings],
                 rules: SpecialRules,
                 allowHarvesting: Boolean,
-                forceHarvesting: Boolean): Integer = synchronized {
+                forceHarvesting: Boolean,
+                randomizeIdle: Boolean): Integer = synchronized {
     val initialDrones = customMap.map(m => (m.player1Drones.size, m.player2Drones.size)).getOrElse((1, 1))
     val maxGameLength = maxTicks.getOrElse(3 * 60 * 60)
     val mapWidth = customMap.map(_.mapWidth).getOrElse(6000)
@@ -48,7 +49,8 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
                            tileWidth,
                            rules,
                            allowHarvesting,
-                           forceHarvesting)
+                           forceHarvesting,
+                           randomizeIdle)
     var controllers: Seq[DroneControllerBase] =
       Seq.fill(initialDrones._1)(new PassiveDroneController(player1, Promise.successful(DoNothing)))
     var player2: Option[PlayerController] = None
@@ -75,7 +77,8 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
                              tileWidth,
                              rules,
                              allowHarvesting,
-                             forceHarvesting)
+                             forceHarvesting,
+                             randomizeIdle)
       player2 = Some(p2)
       controllers ++= Seq.fill(initialDrones._2)(
         new PassiveDroneController(p2, Promise.successful(DoNothing)))
@@ -323,7 +326,8 @@ class PlayerController(
   val tileWidth: Int,
   val rules: SpecialRules,
   val allowHarvesting: Boolean,
-  val forceHarvesting: Boolean
+  val forceHarvesting: Boolean,
+  val randomizeIdle: Boolean
 ) extends MetaController {
   @volatile var alliedDrones = Seq.empty[PassiveDroneController]
   @volatile var enemyDrones = Seq.empty[Drone]
@@ -350,6 +354,7 @@ class PlayerController(
 
   def observe(sim: DroneWorldSimulator, lastSeen: Boolean): Observation = {
     Log.debug(f"[$gameID, $player] Awaiting obs")
+
     try {
       Await.ready(observationsReady.future, 5.seconds)
     } catch {
@@ -461,7 +466,9 @@ class PlayerController(
     for ((d, i) <- alliedDrones.zipWithIndex) {
       Log.debug(f"[$gameID, $player] set action on ${d.id}")
       val action =
-        if (i < actions.size) actions(i) else Action(None, rng.nextBoolean(), true, true, rng.nextInt(3) - 1)
+        if (i < actions.size) actions(i)
+        else if (randomizeIdle) Action(None, rng.nextBoolean(), true, true, rng.nextInt(3) - 1)
+        else DoNothing
       d.setAction(action)
     }
   }
