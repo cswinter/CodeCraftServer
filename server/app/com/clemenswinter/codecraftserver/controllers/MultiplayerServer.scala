@@ -9,6 +9,7 @@ import akka.util.Timeout
 import play.api.inject.ApplicationLifecycle
 
 import scala.concurrent.duration._
+import scala.collection.mutable.Queue
 import scala.language.postfixOps
 import cwinter.codecraft.util.maths.{Rectangle, Vector2}
 
@@ -18,8 +19,10 @@ import scala.util.Random
 @Singleton
 class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
   println("Starting multiplayer server")
+  val maxCompletedGamesRetained = 1000
   var gameID = -1
   var games = Map.empty[Int, Game]
+  var completedGamesQueue = Queue.empty[(Int, Int)]
   var completedGames = Map.empty[(Int, Int), Observation]
   val actorRef = Server.start(maxGames = 20)
   implicit val timeout = Timeout(10 seconds)
@@ -96,7 +99,7 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
           m.symmetric
       )
     )
-    val simulator = server.startLocalGame(controllers, winCondition, map, rules, 24.hours)
+    val simulator = server.startLocalGame(controllers, winCondition, map, rules, 1.hour)
     gameID += 1
     val playerControllers = player2 match {
       case Some(p2) => Seq(player1, p2)
@@ -140,16 +143,22 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
   }
 
   def observe(gameID: Int, playerID: Int, lastSeen: Boolean): Observation = {
+    val key = (gameID, playerID)
     val game = synchronized {
-      if (completedGames.contains((gameID, playerID))) return completedGames((gameID, playerID))
+      if (completedGames.contains(key)) return completedGames(key)
       games(gameID)
     }
     val observation = game.externalPlayers(playerID).observe(game.simulator, lastSeen)
     synchronized {
       if (observation.winner.isDefined || game.externalPlayers(playerID).stopped) {
-        completedGames += (gameID, playerID) -> observation
+        completedGames += key -> observation
         if (game.externalPlayers.size == 1 || completedGames.contains((gameID, 1 - playerID))) {
           games -= gameID
+        }
+        completedGamesQueue.enqueue(key)
+        if (completedGamesQueue.size > maxCompletedGamesRetained) {
+          val keyRemove = completedGamesQueue.dequeue()
+          completedGames -= keyRemove
         }
       }
     }
@@ -162,8 +171,8 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
     game.externalPlayers(playerID).act(actions)
   }
 
-  def debugState(): Seq[GameDebugState] = {
-    for ((id, game) <- games.toSeq) yield {
+  def debugState(): (Seq[GameDebugState], Int) = {
+    (for ((id, game) <- games.toSeq) yield {
       GameDebugState(
         id,
         game.externalPlayers.head.observationsReady.isCompleted,
@@ -171,7 +180,7 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
         game.simulator.currentPhase.toString,
         game.externalPlayers.head.unsafe_observe(game.simulator, true)
       )
-    }
+    }, completedGames.size)
   }
 
   // it appears the class loader will not work during shutdown, so we need to get an instance of Server.Stop
