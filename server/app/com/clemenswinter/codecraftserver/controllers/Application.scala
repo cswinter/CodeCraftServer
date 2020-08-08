@@ -13,6 +13,7 @@ import scala.language.postfixOps
 import akka.pattern.ask
 import akka.util.Timeout
 import cwinter.codecraft.core.game.SpecialRules
+import cwinter.codecraft.util.maths.Vector2
 import play.api.mvc._
 
 import scala.util.Try
@@ -36,7 +37,8 @@ case class ObsConfig(
   ruleCosts: Boolean,
   harvestAction: Boolean,
   mineralAvailable: Boolean,
-  lockBuildAction: Boolean
+  lockBuildAction: Boolean,
+  distanceToWall: Boolean
 ) {
   def rules: Int = (if (ruleMsdm) 1 else 0) + (if (ruleCosts) 9 else 0)
 }
@@ -143,7 +145,8 @@ class Application @Inject()(
                        ruleCosts: Boolean,
                        harvestAction: Boolean,
                        mineralClaims: Boolean,
-                       lockBuildAction: Boolean) = Action { implicit request =>
+                       lockBuildAction: Boolean,
+                       distanceToWall: Boolean) = Action { implicit request =>
     val (games, buildActions) = read[(Seq[(Int, Int)], Seq[Seq[Int]])](request.body.asJson.get.toString)
     val obsConfig =
       ObsConfig(
@@ -163,7 +166,8 @@ class Application @Inject()(
         ruleCosts,
         harvestAction,
         mineralClaims,
-        lockBuildAction
+        lockBuildAction,
+        distanceToWall
       )
     val payload: Seq[Observation] = for ((gameID, playerID) <- games)
       yield multiplayerServer.observe(gameID, playerID, lastSeen)
@@ -203,10 +207,10 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
   private val extraFeat = 5 // Unobserved features such as score, winner, ms health
   private val allyDroneFeat = 15 + (if (obsConfig.obsLastAction) 8 else 0) +
     (if (obsConfig.lastSeen) 2 else 0) + (if (obsConfig.isVisible) 1 else 0) +
-    (if (obsConfig.lockBuildAction) 1 else 0)
+    (if (obsConfig.lockBuildAction) 1 else 0) + (if (obsConfig.distanceToWall) 5 else 0)
   private val enemyDroneFeat = 15 + (if (obsConfig.lastSeen) 2 else 0) +
     (if (obsConfig.isVisible) 1 else 0) +
-    (if (obsConfig.lockBuildAction) 1 else 0)
+    (if (obsConfig.lockBuildAction) 1 else 0) + (if (obsConfig.distanceToWall) 5 else 0)
   private val mineralFeat = if (obsConfig.mineralAvailable) 4 else 3
   private val tileFeat = 4
   private val enemies = obsConfig.drones - obsConfig.allies
@@ -257,13 +261,13 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
     }
 
     // Allies
-    ob.alliedDrones.take(obsConfig.allies).foreach(serializeDrone)
+    ob.alliedDrones.take(obsConfig.allies).foreach(serializeDrone(ob, _))
     val apadding = (obsConfig.allies - ob.alliedDrones.size) * allyDroneFeat
     for (_ <- 0 until apadding) bb.putFloat(0.0f)
 
     // Enemies
     val nEnemy = obsConfig.drones - obsConfig.allies
-    ob.visibleEnemyDrones.take(nEnemy).foreach(serializeDrone)
+    ob.visibleEnemyDrones.take(nEnemy).foreach(serializeDrone(ob, _))
     val epadding = (nEnemy - ob.visibleEnemyDrones.size) * enemyDroneFeat
     for (_ <- 0 until epadding) bb.putFloat(0.0f)
 
@@ -281,12 +285,12 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
     for (_ <- 0 until tpadding) bb.putFloat(0.0f)
 
     // All enemies, including drones not visible to player
-    ob.allEnemyDrones.take(nEnemy).foreach(serializeDrone)
+    ob.allEnemyDrones.take(nEnemy).foreach(serializeDrone(ob, _))
     val aepadding = (nEnemy - ob.allEnemyDrones.size) * enemyDroneFeat
     for (_ <- 0 until aepadding) bb.putFloat(0.0f)
   }
 
-  def serializeDrone(drone: DroneObservation): Unit = {
+  def serializeDrone(obs: Observation, drone: DroneObservation): Unit = {
     bb.putFloat(drone.xPos)
     bb.putFloat(drone.yPos)
     bb.putFloat(math.cos(drone.orientation).toFloat)
@@ -321,6 +325,13 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
     }
     if (obsConfig.lockBuildAction) {
       bb.putFloat(if (drone.buildActionLocked) 1.0f else 0.0f)
+    }
+    if (obsConfig.distanceToWall) {
+      bb.putFloat(distanceToWall(obs, drone.xPos, drone.yPos, drone.orientation - math.Pi / 2))
+      bb.putFloat(distanceToWall(obs, drone.xPos, drone.yPos, drone.orientation - math.Pi / 4))
+      bb.putFloat(distanceToWall(obs, drone.xPos, drone.yPos, drone.orientation))
+      bb.putFloat(distanceToWall(obs, drone.xPos, drone.yPos, drone.orientation + math.Pi / 4))
+      bb.putFloat(distanceToWall(obs, drone.xPos, drone.yPos, drone.orientation + math.Pi / 2))
     }
   }
 
@@ -396,6 +407,47 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
         }
       }
     }
+  }
+
+  def distanceToWall(obs: Observation, x: Float, y: Float, orientation: Double): Float = {
+    val o = Vector2(orientation)
+    val pos = Vector2(x, y)
+
+    var minDist = Double.MaxValue
+
+    if (o.x != 0) {
+      // Top wall
+      val intersectYTop = y + o.y * (obs.mapHeight * 0.5 - x) / o.x
+      val distTop = (Vector2(obs.mapHeight * 0.5, intersectYTop) - pos).dot(o)
+      if (distTop > 0 && distTop < minDist) {
+        minDist = distTop
+      }
+
+      // Bottom wall
+      val intersectYBot = y + o.y * (-obs.mapHeight * 0.5 - x) / o.x
+      val distBot = (Vector2(-obs.mapHeight * 0.5, intersectYBot) - pos).dot(o)
+      if (distBot > 0 && distBot < minDist) {
+        minDist = distBot
+      }
+    }
+
+    if (o.y != 0) {
+      // Right wall
+      val intersectXRight = x + o.x * (obs.mapWidth * 0.5 - y) / o.y
+      val distRight = (Vector2(intersectXRight, obs.mapWidth * 0.5) - pos).dot(o)
+      if (distRight > 0 && distRight < minDist) {
+        minDist = distRight
+      }
+
+      // Left wall
+      val intersectXLeft = x + o.x * (-obs.mapWidth * 0.5 - y) / o.y
+      val distBot = (Vector2(intersectXLeft, -obs.mapWidth * 0.5) - pos).dot(o)
+      if (distBot > 0 && distBot < minDist) {
+        minDist = distBot
+      }
+    }
+
+    math.min(1000.0, minDist).toFloat
   }
 }
 
