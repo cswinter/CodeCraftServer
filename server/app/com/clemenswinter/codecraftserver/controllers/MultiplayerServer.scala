@@ -365,7 +365,7 @@ class PlayerController(
     Log.debug(f"[$gameID, $player] Awaiting obs")
 
     try {
-      Await.ready(observationsReady.future, 5.seconds)
+      Await.ready(observationsReady.future, 15.seconds)
     } catch {
       case e: TimeoutException => {
         println(s"OBSERVATION TIMED OUT, STOPPING GAME $gameID")
