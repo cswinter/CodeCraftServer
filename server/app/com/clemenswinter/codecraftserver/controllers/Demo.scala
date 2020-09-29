@@ -8,7 +8,9 @@ import cwinter.codecraft.core.game._
 sealed trait Command
 case class Move(direction: Double) extends Command
 case class MoveTo(position: Vector2) extends Command
+case class MoveInDirection(direction: Double) extends Command
 object Idle extends Command
+case class ActionCmd(action: Action) extends Command
 
 class DemoController(
   commands: Seq[Command],
@@ -33,6 +35,21 @@ class DemoController(
             case Idle =>
             case Move(d) => moveInDirection(d)
             case MoveTo(pos) => moveTo(pos)
+            case MoveInDirection(dir) => moveInDirection(dir)
+            case ActionCmd(action) =>
+              if (action.move && action.turn == 0) {
+                moveInDirection(orientation)
+              } else if (action.move && action.turn == -1) {
+                moveInDirection(orientation - 0.249)
+              } else if (action.move && action.turn == 1) {
+                moveInDirection(orientation + 0.249)
+              } else if (action.turn == -1) {
+                moveInDirection(orientation - 2)
+              } else if (action.turn == 1) {
+                moveInDirection(orientation + 2)
+              } else {
+                halt()
+              }
           }
         case None =>
       }
@@ -72,6 +89,59 @@ object Demo {
     val initialDrones = None
     val mapWidth = 10000
     val mapHeight = 10000
+
+    val spacing = 200
+    val movementActions = Seq(
+      (StartingDrone(-4500, 4000, missileBatteries = 1),
+       new DemoController(
+         Seq.fill(3)(MoveInDirection(math.Pi / 2)) ++
+           Seq.fill(15)(ActionCmd(DoNothing)) ++
+           Seq(
+             ActionCmd(Action(buildDrone = None, move = false, harvest = false, transfer = false, turn = 1)),
+             ActionCmd(DoNothing)
+           ))),
+      (StartingDrone(-4500 + spacing, 4000, missileBatteries = 1),
+       new DemoController(
+         Seq.fill(3)(MoveInDirection(math.Pi / 2)) ++
+           Seq.fill(15)(ActionCmd(DoNothing)) ++
+           Seq(
+             ActionCmd(Action(buildDrone = None, move = false, harvest = false, transfer = false, turn = 0)),
+             ActionCmd(DoNothing)
+           ))),
+      (StartingDrone(-4500 + 2 * spacing, 4000, missileBatteries = 1),
+       new DemoController(
+         Seq.fill(3)(MoveInDirection(math.Pi / 2)) ++
+           Seq.fill(15)(ActionCmd(DoNothing)) ++
+           Seq(
+             ActionCmd(
+               Action(buildDrone = None, move = false, harvest = false, transfer = false, turn = -1)),
+             ActionCmd(DoNothing)
+           ))),
+      (StartingDrone(-4500, 4000 - spacing, missileBatteries = 1),
+       new DemoController(
+         Seq.fill(3)(MoveInDirection(math.Pi / 2)) ++
+           Seq.fill(15)(ActionCmd(DoNothing)) ++
+           Seq(
+             ActionCmd(Action(buildDrone = None, move = true, harvest = false, transfer = false, turn = 1)),
+             ActionCmd(DoNothing)
+           ))),
+      (StartingDrone(-4500 + spacing, 4000 - spacing, missileBatteries = 1),
+       new DemoController(
+         Seq.fill(3)(MoveInDirection(math.Pi / 2)) ++
+           Seq.fill(15)(ActionCmd(DoNothing)) ++
+           Seq(
+             ActionCmd(Action(buildDrone = None, move = true, harvest = false, transfer = false, turn = 0)),
+             ActionCmd(DoNothing)
+           ))),
+      (StartingDrone(-4500 + 2 * spacing, 4000 - spacing, missileBatteries = 1),
+       new DemoController(
+         Seq.fill(3)(MoveInDirection(math.Pi / 2)) ++
+           Seq.fill(15)(ActionCmd(DoNothing)) ++
+           Seq(
+             ActionCmd(Action(buildDrone = None, move = true, harvest = false, transfer = false, turn = -1)),
+             ActionCmd(DoNothing)
+           )))
+    )
 
     val drones1 = Seq(
       // DEMO 1: harvest (1s)
@@ -122,7 +192,7 @@ object Demo {
                       shieldGenerators = 1),
         new DemoController(Seq(MoveTo(Vector2(0, -3000))))
       )
-    )
+    ) ++ movementActions
 
     val drones2 = Seq(
       // DEMO 3: missile (1m vs 1s)
