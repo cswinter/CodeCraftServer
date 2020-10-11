@@ -1,8 +1,8 @@
 package betterviews
 
 object Observe {
-  def apply(): String = {
-    """
+  def apply(autorestart: Boolean): String = {
+    s"""
   <!DOCTYPE html>
     <html lang="en">
       <head>
@@ -21,7 +21,7 @@ object Observe {
             </tr>
           </table>
 
-          <script type="text/javascript" src="assets/client-fastopt.js"></script>
+          <script id="script" type="text/javascript" src="assets/client-fastopt.js" data-autorestart="$autorestart"></script>
         </body>
       </html>
       """
