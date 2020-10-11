@@ -20,20 +20,28 @@ object ObserveGame {
     if (multiplayer) {
       val script = document.getElementById("script")
       val autorestart = script.getAttribute("data-autorestart") == "true"
-      runMultiplayer(autorestart)
+      val autozoom = script.getAttribute("data-autozoom") == "true"
+      runMultiplayer(autorestart, autozoom)
     } else {
       run(TheGameMaster.replicatorAI(), TheGameMaster.replicatorAI())
     }
   }
 
-  def runMultiplayer(autorestart: Boolean): Unit = {
+  def runMultiplayer(autorestart: Boolean, autozoom: Boolean): Unit = {
     import scala.concurrent.ExecutionContext.Implicits.global
     val simulator = TheGameMaster.prepareMultiplayerGame("localhost", TheGameMaster.replicatorAI())
     simulator.onSuccess {
       case s: DroneWorldSimulator =>
+        if (autozoom) {
+          val canvas: html.Canvas =
+            document.getElementById("webgl-canvas").asInstanceOf[html.Canvas]
+          val zoomX = math.log(s.config.worldSize.width * 1.05 / canvas.clientWidth)
+          val zoomY = math.log(s.config.worldSize.height * 1.05 / canvas.clientHeight)
+          s.initialCameraZoom = math.max(zoomX, zoomY).toFloat
+        }
         TheGameMaster.run(s, onComplete = () => {
           if (autorestart) {
-            scala.scalajs.js.timers.setTimeout(1000.0)(runMultiplayer(autorestart))
+            scala.scalajs.js.timers.setTimeout(1000.0)(runMultiplayer(autorestart, autozoom))
           }
         })
     }

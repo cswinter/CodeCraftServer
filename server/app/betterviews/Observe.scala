@@ -1,7 +1,7 @@
 package betterviews
 
 object Observe {
-  def apply(autorestart: Boolean): String = {
+  def apply(autorestart: Boolean, autozoom: Boolean): String = {
     s"""
   <!DOCTYPE html>
     <html lang="en">
@@ -21,7 +21,9 @@ object Observe {
             </tr>
           </table>
 
-          <script id="script" type="text/javascript" src="assets/client-fastopt.js" data-autorestart="$autorestart"></script>
+          <script id="script" type="text/javascript" src="assets/client-fastopt.js"
+                  data-autorestart="$autorestart"
+                  data-autozoom="$autozoom"></script>
         </body>
       </html>
       """
