@@ -1,6 +1,6 @@
 lazy val sharedDependencies =
   libraryDependencies ++= Seq(
-    "org.codecraftgame" %%% "codecraft" % "0.6.1" changing (),
+    "org.codecraftgame" %%% "codecraft" % "0.7.0",
     "com.lihaoyi" %%% "scalatags" % "0.6.7",
     "com.lihaoyi" %% "upickle" % "0.4.1"
   )
