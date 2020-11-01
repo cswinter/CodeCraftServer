@@ -368,7 +368,7 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
         // 0-5: turn/movement (4 is no turn, no movement)
         // 6: build [0,1,0,0,0] drone (if minerals > 5)
         // 7: harvest
-        val canMove = if (drone.isStunned || drone.isConstructing || drone.harvestLock) 0.0f else 1.0f
+        val canMove = if (drone.isStunned || drone.harvestLock) 0.0f else 1.0f
         for (i <- 0 until 6) {
           // Can always do nothing
           if (i == 4)
