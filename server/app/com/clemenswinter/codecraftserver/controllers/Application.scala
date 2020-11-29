@@ -376,24 +376,16 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
           else
             bb.putFloat(canMove)
         }
-        val m1MaxBuildCost = Util.maxBuildCost(ob.rules, Seq(0, 1, 0, 0, 0))
-        val canConstruct1m =
+        val canConstruct =
           if (drone.constructors > 0 &&
-              drone.storedResources >= m1MaxBuildCost &&
               !drone.isConstructing &&
-              !(drone.buildActionLocked && obsConfig.lockBuildAction))
+              !(drone.buildActionLocked && obsConfig.lockBuildAction) &&
+              drone.storedResources > 0)
             1.0f
           else 0.0f
-        bb.putFloat(canConstruct1m)
+        bb.putFloat(canConstruct)
         bb.putFloat(if (drone.canHarvest) 1.0f else 0.0f)
-        for (modules <- obsConfig.extraBuildActions) {
-          val canConstruct =
-            if (drone.constructors > 0 &&
-                drone.storedResources >= Util.maxBuildCost(ob.rules, modules) &&
-                !drone.isConstructing &&
-                !(drone.buildActionLocked && obsConfig.lockBuildAction))
-              1.0f
-            else 0.0f
+        for (_ <- obsConfig.extraBuildActions) {
           bb.putFloat(canConstruct)
         }
         if (obsConfig.lockBuildAction) {

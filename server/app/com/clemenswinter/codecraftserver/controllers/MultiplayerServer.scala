@@ -237,8 +237,7 @@ class PassiveDroneController(
 
     for (spec <- action.buildDrone) {
       val droneSpec = DroneSpec(spec(0), spec(1), spec(2), spec(3), spec(4))
-      if (Util.maxBuildCost(state.rules, spec) <= storedResources)
-        buildDrone(new PassiveDroneController(state), droneSpec)
+      buildDrone(new PassiveDroneController(state), droneSpec)
     }
 
     if (constructors == 0 && storedResources > 0 && alliesInSight.nonEmpty) {
