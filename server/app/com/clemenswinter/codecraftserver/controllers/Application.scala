@@ -366,8 +366,8 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
       } else {
         val drone = ob.alliedDrones(i)
         // 0-5: turn/movement (4 is no turn, no movement)
-        // 6: build [0,1,0,0,0] drone (if minerals > 5)
-        // 7: harvest
+        // 6: build [0,1,0,0,0] drone
+        // 7: deposit resources (previously harvest)
         val canMove = if (drone.isStunned || drone.harvestLock) 0.0f else 1.0f
         for (i <- 0 until 6) {
           // Can always do nothing
@@ -384,7 +384,7 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
             1.0f
           else 0.0f
         bb.putFloat(canConstruct)
-        bb.putFloat(if (drone.canHarvest) 1.0f else 0.0f)
+        bb.putFloat(if (drone.storedResources > 0) 1.0f else 0.0f)
         for (_ <- obsConfig.extraBuildActions) {
           bb.putFloat(canConstruct)
         }

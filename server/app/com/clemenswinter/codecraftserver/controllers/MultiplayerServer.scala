@@ -277,8 +277,12 @@ class PassiveDroneController(
         currentlyHarvesting = Some(closest)
       }
     }
-    if (action.harvest && currentlyHarvesting.isDefined) {
-      harvesting = Some(storedResources)
+    if (action.harvest) {
+      val motherships = state.alliedDrones.filter(_.constructors > 0)
+      if (motherships.nonEmpty) {
+        val closestMS = motherships.minBy(x => (x.position - position).lengthSquared)
+        moveTo(closestMS)
+      }
     }
 
     Log.debug(
@@ -413,7 +417,6 @@ class PlayerController(
             isEnemy = false,
             Some(d.lastAction),
             0,
-            d.mineralsInSight.exists(m => d.isInHarvestingRange(m)),
             curentlyHarvesting || (d.isHarvesting && forceHarvesting),
             buildActionLocked = d.buildActionLocked
           )
@@ -563,7 +566,6 @@ case class DroneObservation(
   missileCooldown: Int,
   timeSinceVisible: Int,
   isVisible: Boolean,
-  canHarvest: Boolean,
   buildActionLocked: Boolean,
   harvestLock: Boolean
 )
@@ -573,7 +575,6 @@ object DroneObservation {
             isEnemy: Boolean,
             lastAction: Option[Action],
             timeSinceVisible: Int,
-            canHarvest: Boolean = false,
             currentlyHarvesting: Boolean = false,
             buildActionLocked: Boolean): DroneObservation = {
     DroneObservation(
@@ -596,7 +597,6 @@ object DroneObservation {
       if (d.isVisible && d.missileBatteries > 0) d.missileCooldown else GameConstants.MissileCooldown,
       timeSinceVisible,
       d.isVisible,
-      canHarvest = canHarvest && !currentlyHarvesting,
       buildActionLocked = buildActionLocked,
       harvestLock = currentlyHarvesting
     )
