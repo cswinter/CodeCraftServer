@@ -21,7 +21,7 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
   println("Starting multiplayer server")
   val maxCompletedGamesRetained = 1000
   var gameID = -1
-  var games = Map.empty[Int, Game]
+  @volatile var games = Map.empty[Int, Game]
   var completedGamesQueue = Queue.empty[(Int, Int)]
   var completedGames = Map.empty[(Int, Int), Observation]
   val actorRef = Server.start(maxGames = 20)
@@ -528,7 +528,7 @@ case class MapTile(
   var lastVisitedTime: Int
 )
 
-case class Observation(
+sealed case class Observation(
   timestep: Int,
   maxGameLength: Int,
   winner: Option[Int],
@@ -546,7 +546,7 @@ case class Observation(
   rules: SpecialRules
 )
 
-case class DroneObservation(
+sealed case class DroneObservation(
   xPos: Float,
   yPos: Float,
   orientation: Float,
@@ -603,7 +603,7 @@ object DroneObservation {
   }
 }
 
-case class MineralObservation(
+sealed case class MineralObservation(
   xPos: Float,
   yPos: Float,
   size: Int,
@@ -662,6 +662,11 @@ case class StartingDrone(
     resources
   )
 }
+
+case class GameSettings(
+  map: Option[MapSettings],
+  costModifiers: Seq[(Seq[Int], Double)]
+)
 
 case class MapSettings(
   mapWidth: Int,

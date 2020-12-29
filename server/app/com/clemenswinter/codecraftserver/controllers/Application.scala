@@ -12,6 +12,7 @@ import scala.concurrent.duration._
 import scala.language.postfixOps
 import akka.pattern.ask
 import akka.util.Timeout
+import cwinter.codecraft.core.api.DroneSpec
 import cwinter.codecraft.core.game.SpecialRules
 import cwinter.codecraft.util.maths.Vector2
 import play.api.mvc._
@@ -40,7 +41,7 @@ case class ObsConfig(
   lockBuildAction: Boolean,
   distanceToWall: Boolean
 ) {
-  def rules: Int = (if (ruleMsdm) 1 else 0) + (if (ruleCosts) 9 else 0)
+  def rules: Int = (if (ruleMsdm) 1 else 0) + (if (ruleCosts) extraBuildActions.length + 1 else 0)
 }
 
 @Singleton
@@ -62,34 +63,22 @@ class Application @Inject()(
     actionDelay: Int,
     scriptedOpponent: String,
     mothershipDamageMultiplier: Double,
-    costModifierSize1: Double,
-    costModifierSize2: Double,
-    costModifierSize3: Double,
-    costModifierSize4: Double,
-    costModifierConstructor: Double,
-    costModifierStorage: Double,
-    costModifierShields: Double,
-    costModifierMissiles: Double,
-    costModifierEngines: Double,
     allowHarvesting: Boolean,
     forceHarvesting: Boolean,
     randomizeIdle: Boolean
   ) =
     Action { implicit request =>
       val body = request.body.asJson.get.toString
-      val customMap = if (body == "\"\"") None else Some(read[MapSettings](body))
+      val config = read[GameSettings](body)
       val rules = SpecialRules(
         mothershipDamageMultiplier,
-        Array(costModifierSize1, costModifierSize2, costModifierSize3, costModifierSize4),
-        costModifierConstructor = costModifierConstructor,
-        costModifierStorage = costModifierStorage,
-        costModifierShields = costModifierShields,
-        costModifierMissiles = costModifierMissiles,
-        costModifierEngines = costModifierEngines
+        (for ((Seq(storageModules, missileBatteries, constructors, engines, shieldGenerators), modifier) <- config.costModifiers)
+          yield
+            (DroneSpec(storageModules, missileBatteries, constructors, engines, shieldGenerators), modifier)).toMap
       )
       val id = multiplayerServer.startGame(maxTicks,
                                            scriptedOpponent,
-                                           customMap,
+                                           config.map,
                                            rules,
                                            allowHarvesting,
                                            forceHarvesting,
@@ -197,7 +186,7 @@ class Application @Inject()(
   }
 
   def debugState = Action {
-    Ok(write(multiplayerServer.debugState)).as("application/json")
+    Ok(write(multiplayerServer.debugState()._1)).as("application/json")
   }
 }
 
@@ -250,14 +239,10 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
       bb.putFloat(ob.rules.mothershipDamageMultiplier.toFloat)
     }
     if (obsConfig.ruleCosts) {
-      for (m <- ob.rules.costModifierSize) {
-        bb.putFloat(m.toFloat)
+      assert(ob.rules.unitCostModifiers.size == obsConfig.extraBuildActions.size + 1)
+      for ((_, m) <- ob.rules.unitCostModifiers) {
+        bb.putFloat(math.log(m).toFloat)
       }
-      bb.putFloat(ob.rules.costModifierConstructor.toFloat)
-      bb.putFloat(ob.rules.costModifierStorage.toFloat)
-      bb.putFloat(ob.rules.costModifierShields.toFloat)
-      bb.putFloat(ob.rules.costModifierMissiles.toFloat)
-      bb.putFloat(ob.rules.costModifierEngines.toFloat)
     }
 
     // Allies
@@ -440,21 +425,5 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
     }
 
     math.min(1000.0, minDist).toFloat
-  }
-}
-
-object Util {
-  def maxBuildCost(rules: SpecialRules, modules: Seq[Int]): Int = {
-    val Seq(storage, missile, constructor, engine, shield) = modules
-    val sizeModifier = if (modules.sum - 1 < rules.costModifierSize.length) {
-      rules.costModifierSize(modules.sum - 1)
-    } else {
-      1.0
-    }
-    ((storage * rules.costModifierStorage +
-      missile * rules.costModifierMissiles +
-      constructor * rules.costModifierConstructor +
-      engine * rules.costModifierEngines +
-      shield * rules.costModifierShields) * sizeModifier * 5.0).ceil.toInt
   }
 }
