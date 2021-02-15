@@ -240,7 +240,9 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
     }
     if (obsConfig.ruleCosts) {
       assert(ob.rules.unitCostModifiers.size == obsConfig.extraBuildActions.size + 1)
-      for ((_, m) <- ob.rules.unitCostModifiers) {
+      val sorted: Seq[(DroneSpec, Double)] =
+        ob.rules.unitCostModifiers.toSeq.sortBy(x => DroneSpec.unapply(x._1))
+      for ((_, m) <- sorted) {
         bb.putFloat(math.log(m).toFloat)
       }
     }
