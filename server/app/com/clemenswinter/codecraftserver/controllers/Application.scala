@@ -41,7 +41,8 @@ case class ObsConfig(
   lockBuildAction: Boolean,
   distanceToWall: Boolean,
   unitCount: Boolean,
-  enforceUnitCap: Boolean
+  enforceUnitCap: Boolean,
+  unitCapOverride: Int
 ) {
   def rules: Int = (if (ruleMsdm) 1 else 0) + (if (ruleCosts) extraBuildActions.length + 1 else 0)
 }
@@ -139,7 +140,8 @@ class Application @Inject()(
                        lockBuildAction: Boolean,
                        distanceToWall: Boolean,
                        unitCount: Boolean,
-                       enforceUnitCap: Boolean) = Action { implicit request =>
+                       enforceUnitCap: Boolean,
+                       unitCapOverride: Int) = Action { implicit request =>
     val (games, buildActions) = read[(Seq[(Int, Int)], Seq[Seq[Int]])](request.body.asJson.get.toString)
     val obsConfig =
       ObsConfig(
@@ -162,7 +164,8 @@ class Application @Inject()(
         lockBuildAction,
         distanceToWall,
         unitCount,
-        enforceUnitCap
+        enforceUnitCap,
+        unitCapOverride
       )
     val payload: Seq[Observation] = for ((gameID, playerID) <- games)
       yield multiplayerServer.observe(gameID, playerID, lastSeen)
@@ -373,12 +376,13 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
           else
             bb.putFloat(canMove)
         }
+        val unitCap = if (obsConfig.unitCapOverride > 0) obsConfig.unitCapOverride else obsConfig.allies
         val canConstruct =
           if (drone.constructors > 0 &&
               !drone.isConstructing &&
               !(drone.buildActionLocked && obsConfig.lockBuildAction) &&
               drone.storedResources > 0 &&
-              !(obsConfig.enforceUnitCap && ob.alliedDrones.size >= obsConfig.allies))
+              !(obsConfig.enforceUnitCap && ob.alliedDrones.size >= unitCap))
             1.0f
           else 0.0f
         bb.putFloat(canConstruct)
