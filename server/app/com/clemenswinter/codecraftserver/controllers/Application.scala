@@ -38,7 +38,9 @@ case class ObsConfig(
   harvestAction: Boolean,
   mineralAvailable: Boolean,
   lockBuildAction: Boolean,
-  distanceToWall: Boolean
+  distanceToWall: Boolean,
+  unitCount: Boolean,
+  enforceUnitCap: Boolean
 ) {
   def rules: Int = (if (ruleMsdm) 1 else 0) + (if (ruleCosts) 9 else 0)
 }
@@ -146,7 +148,9 @@ class Application @Inject()(
                        harvestAction: Boolean,
                        mineralClaims: Boolean,
                        lockBuildAction: Boolean,
-                       distanceToWall: Boolean) = Action { implicit request =>
+                       distanceToWall: Boolean,
+                       unitCount: Boolean,
+                       enforceUnitCap: Boolean) = Action { implicit request =>
     val (games, buildActions) = read[(Seq[(Int, Int)], Seq[Seq[Int]])](request.body.asJson.get.toString)
     val obsConfig =
       ObsConfig(
@@ -167,7 +171,9 @@ class Application @Inject()(
         harvestAction,
         mineralClaims,
         lockBuildAction,
-        distanceToWall
+        distanceToWall,
+        unitCount,
+        enforceUnitCap
       )
     val payload: Seq[Observation] = for ((gameID, playerID) <- games)
       yield multiplayerServer.observe(gameID, playerID, lastSeen)
@@ -203,7 +209,8 @@ class Application @Inject()(
 
 class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
   assert(!obsConfig.relativePositions)
-  private val globalFeat = 2 + (if (obsConfig.mapSize) 2 else 0) + (if (obsConfig.abstime) 2 else 0) + obsConfig.rules
+  private val globalFeat = 2 + (if (obsConfig.mapSize) 2 else 0) + (if (obsConfig.abstime) 2 else 0) +
+    obsConfig.rules + (if (obsConfig.unitCount) 1 else 0)
   private val extraFeat = 5 // Unobserved features such as score, winner, ms health
   private val allyDroneFeat = 15 + (if (obsConfig.obsLastAction) 8 else 0) +
     (if (obsConfig.lastSeen) 2 else 0) + (if (obsConfig.isVisible) 1 else 0) +
@@ -258,6 +265,9 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
       bb.putFloat(ob.rules.costModifierShields.toFloat)
       bb.putFloat(ob.rules.costModifierMissiles.toFloat)
       bb.putFloat(ob.rules.costModifierEngines.toFloat)
+    }
+    if (obsConfig.unitCount) {
+      bb.putFloat(math.min(ob.alliedDrones.size, obsConfig.allies))
     }
 
     // Allies
@@ -381,7 +391,8 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
           if (drone.constructors > 0 &&
               drone.storedResources >= m1MaxBuildCost &&
               !drone.isConstructing &&
-              !(drone.buildActionLocked && obsConfig.lockBuildAction))
+              !(drone.buildActionLocked && obsConfig.lockBuildAction) &&
+              !(obsConfig.enforceUnitCap && ob.alliedDrones.size >= obsConfig.allies))
             1.0f
           else 0.0f
         bb.putFloat(canConstruct1m)
@@ -391,7 +402,8 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
             if (drone.constructors > 0 &&
                 drone.storedResources >= Util.maxBuildCost(ob.rules, modules) &&
                 !drone.isConstructing &&
-                !(drone.buildActionLocked && obsConfig.lockBuildAction))
+                !(drone.buildActionLocked && obsConfig.lockBuildAction) &&
+                !(obsConfig.enforceUnitCap && ob.alliedDrones.size >= obsConfig.allies))
               1.0f
             else 0.0f
           bb.putFloat(canConstruct)
