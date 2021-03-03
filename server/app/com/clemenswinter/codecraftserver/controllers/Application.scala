@@ -75,9 +75,21 @@ class Application @Inject()(
       val config = read[GameSettings](body)
       val rules = SpecialRules(
         mothershipDamageMultiplier,
-        (for ((Seq(storageModules, missileBatteries, constructors, engines, shieldGenerators), modifier) <- config.costModifiers)
+        (for ((Seq(storageModules,
+                   missileBatteries,
+                   constructors,
+                   engines,
+                   shieldGenerators,
+                   longRangeMissiles),
+               modifier) <- config.costModifiers)
           yield
-            (DroneSpec(storageModules, missileBatteries, constructors, engines, shieldGenerators), modifier)).toMap
+            (DroneSpec(storageModules,
+                       missileBatteries,
+                       constructors,
+                       engines,
+                       shieldGenerators,
+                       longRangeMissiles),
+             modifier)).toMap
       )
       val id = multiplayerServer.startGame(maxTicks,
                                            scriptedOpponent,
@@ -102,7 +114,7 @@ class Application @Inject()(
 
   def playerState(gameID: Int, playerID: Int) = Action {
     val payload = multiplayerServer.observe(gameID, playerID, lastSeen = true)
-    Ok(write(payload)).as("application/json")
+    Ok("{\"status\": \"success\"}").as("application/json")
   }
 
   def batchAct() = Action { implicit request =>
@@ -170,7 +182,16 @@ class Application @Inject()(
     val payload: Seq[Observation] = for ((gameID, playerID) <- games)
       yield multiplayerServer.observe(gameID, playerID, lastSeen)
     if (json) {
-      Ok(write(payload)).as("application/json")
+      var text = new StringBuilder("[")
+      for (obs <- payload) {
+        obs.winner match {
+          case Some(id) => text ++= "{\"winner\": [" + id + "]},"
+          case None => text ++= "{\"winner\": []},"
+        }
+      }
+      text = text.dropRight(1)
+      text ++= "]"
+      Ok(text.result).as("application/json")
     } else {
       if (v2) {
         val serializer = new ObsSerializer(payload, obsConfig)
@@ -193,10 +214,6 @@ class Application @Inject()(
       lessGames = status.games.sortBy(-_.startTimestamp).take(maxGameStats)
     } yield Ok(write(status.copy(games = lessGames))).as("application/json")
   }
-
-  def debugState = Action {
-    Ok(write(multiplayerServer.debugState()._1)).as("application/json")
-  }
 }
 
 class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
@@ -204,10 +221,10 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
   private val globalFeat = 2 + (if (obsConfig.mapSize) 2 else 0) + (if (obsConfig.abstime) 2 else 0) +
     obsConfig.rules + (if (obsConfig.unitCount) 1 else 0)
   private val extraFeat = 5 // Unobserved features such as score, winner, ms health
-  private val allyDroneFeat = 15 + (if (obsConfig.obsLastAction) 8 else 0) +
+  private val allyDroneFeat = 17 + (if (obsConfig.obsLastAction) 8 else 0) +
     (if (obsConfig.lastSeen) 2 else 0) + (if (obsConfig.isVisible) 1 else 0) +
     (if (obsConfig.lockBuildAction) 1 else 0) + (if (obsConfig.distanceToWall) 5 else 0)
-  private val enemyDroneFeat = 15 + (if (obsConfig.lastSeen) 2 else 0) +
+  private val enemyDroneFeat = 17 + (if (obsConfig.lastSeen) 2 else 0) +
     (if (obsConfig.isVisible) 1 else 0) +
     (if (obsConfig.lockBuildAction) 1 else 0) + (if (obsConfig.distanceToWall) 5 else 0)
   private val mineralFeat = if (obsConfig.mineralAvailable) 4 else 3
@@ -225,6 +242,7 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
   bb.order(ByteOrder.nativeOrder)
 
   def serialize(): Array[Byte] = {
+    // TODO: new modules + cooldowns
     obs.foreach(serializeObjects)
     obs.foreach(serializeScores)
     obs.foreach(serializeActionMasks)
@@ -304,12 +322,14 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
     bb.putFloat(drone.constructors)
     bb.putFloat(drone.engines)
     bb.putFloat(drone.shieldGenerators)
+    bb.putFloat(drone.longRangeMissiles)
     bb.putFloat(if (drone.isStunned) 1.0f else -1.0f)
     bb.putFloat(if (drone.isEnemy) -1.0f else 1.0f)
     if (obsConfig.lastSeen) {
       bb.putFloat(drone.timeSinceVisible.toFloat)
       bb.putFloat(drone.missileCooldown.toFloat)
     }
+    bb.putFloat(drone.longRangeMissileCooldown.toFloat)
     if (obsConfig.isVisible) {
       bb.putFloat(if (drone.isVisible) 1.0f else -1.0f)
     }

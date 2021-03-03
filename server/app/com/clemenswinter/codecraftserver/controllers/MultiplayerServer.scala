@@ -199,6 +199,10 @@ class AFK extends DroneController {
       val closest = enemiesInSight.minBy(enemy => (enemy.position - position).lengthSquared)
       if (isInMissileRange(closest)) fireMissilesAt(closest)
     }
+    if (longRangeMissileCooldown == 0 && enemiesInSight.nonEmpty) {
+      val closest = enemiesInSight.minBy(enemy => (enemy.position - position).lengthSquared)
+      if (isInLongRangeMissileRange(closest)) fireLongRangeMissilesAt(closest)
+    }
   }
 }
 
@@ -223,6 +227,11 @@ class PassiveDroneController(
       val closest = enemiesInSight.minBy(enemy => (enemy.position - position).lengthSquared)
       if (isInMissileRange(closest)) fireMissilesAt(closest)
     }
+    if (longRangeMissileCooldown == 0 && enemiesInSight.nonEmpty) {
+      val closest = enemiesInSight.minBy(enemy => (enemy.position - position).lengthSquared)
+      //println("FIRING LONG RAQNGE MISSILES")
+      if (isInLongRangeMissileRange(closest)) fireLongRangeMissilesAt(closest)
+    }
     val action = try {
       Log.debug(f"[${state.gameID}, ${state.player}] $id Waiting for action (=${this.hitpoints})")
       Await.result(nextAction.future, 1.hours)
@@ -236,7 +245,7 @@ class PassiveDroneController(
     Log.debug(f"[${state.gameID}, ${state.player}] $id Obtained action (hitpoints=${this.hitpoints})")
 
     for (spec <- action.buildDrone) {
-      val droneSpec = DroneSpec(spec(0), spec(1), spec(2), spec(3), spec(4))
+      val droneSpec = DroneSpec(spec(0), spec(1), spec(2), spec(3), spec(4), spec(5))
       buildDrone(new PassiveDroneController(state), droneSpec)
     }
 
@@ -556,6 +565,7 @@ sealed case class DroneObservation(
   constructors: Int,
   engines: Int,
   shieldGenerators: Int,
+  longRangeMissiles: Int,
   hitpoints: Int,
   storedResources: Int,
   isConstructing: Boolean,
@@ -564,6 +574,7 @@ sealed case class DroneObservation(
   isEnemy: Boolean,
   lastAction: Option[Action],
   missileCooldown: Int,
+  longRangeMissileCooldown: Int,
   timeSinceVisible: Int,
   isVisible: Boolean,
   buildActionLocked: Boolean,
@@ -587,6 +598,7 @@ object DroneObservation {
       d.constructors,
       d.engines,
       d.shieldGenerators,
+      d.spec.longRangeMissiles,
       if (d.isVisible) d.hitpoints else d.maxHitpoints,
       if (d.isVisible) d.storedResources else 0,
       if (d.isVisible) d.isConstructing else false,
@@ -595,6 +607,8 @@ object DroneObservation {
       isEnemy,
       lastAction,
       if (d.isVisible && d.missileBatteries > 0) d.missileCooldown else GameConstants.MissileCooldown,
+      if (d.isVisible && d.longRangeMissileCooldown > 0) d.longRangeMissileCooldown
+      else GameConstants.LongRangeMissileCooldown,
       timeSinceVisible,
       d.isVisible,
       buildActionLocked = buildActionLocked,
@@ -653,10 +667,11 @@ case class StartingDrone(
   missileBatteries: Int = 0,
   constructors: Int = 0,
   engines: Int = 0,
-  shieldGenerators: Int = 0
+  shieldGenerators: Int = 0,
+  longRangeMissiles: Int = 0
 ) {
   def toSpawn(player: Player): Spawn = Spawn(
-    DroneSpec(storageModules, missileBatteries, constructors, engines, shieldGenerators),
+    DroneSpec(storageModules, missileBatteries, constructors, engines, shieldGenerators, longRangeMissiles),
     Vector2(xPos, yPos),
     player,
     resources
