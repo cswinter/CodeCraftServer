@@ -329,7 +329,7 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
       bb.putFloat(drone.timeSinceVisible.toFloat)
       bb.putFloat(drone.missileCooldown.toFloat)
     }
-    bb.putFloat(drone.longRangeMissileCooldown.toFloat)
+    bb.putFloat(drone.longRangeMissileChargeup.toFloat)
     if (obsConfig.isVisible) {
       bb.putFloat(if (drone.isVisible) 1.0f else -1.0f)
     }

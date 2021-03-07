@@ -199,7 +199,7 @@ class AFK extends DroneController {
       val closest = enemiesInSight.minBy(enemy => (enemy.position - position).lengthSquared)
       if (isInMissileRange(closest)) fireMissilesAt(closest)
     }
-    if (longRangeMissileCooldown == 0 && enemiesInSight.nonEmpty) {
+    if (longRangeMissileChargeup == 0 && enemiesInSight.nonEmpty) {
       val closest = enemiesInSight.minBy(enemy => (enemy.position - position).lengthSquared)
       if (isInLongRangeMissileRange(closest)) fireLongRangeMissilesAt(closest)
     }
@@ -227,9 +227,8 @@ class PassiveDroneController(
       val closest = enemiesInSight.minBy(enemy => (enemy.position - position).lengthSquared)
       if (isInMissileRange(closest)) fireMissilesAt(closest)
     }
-    if (longRangeMissileCooldown == 0 && enemiesInSight.nonEmpty) {
+    if (longRangeMissileChargeup == 0 && enemiesInSight.nonEmpty) {
       val closest = enemiesInSight.minBy(enemy => (enemy.position - position).lengthSquared)
-      //println("FIRING LONG RAQNGE MISSILES")
       if (isInLongRangeMissileRange(closest)) fireLongRangeMissilesAt(closest)
     }
     val action = try {
@@ -574,7 +573,7 @@ sealed case class DroneObservation(
   isEnemy: Boolean,
   lastAction: Option[Action],
   missileCooldown: Int,
-  longRangeMissileCooldown: Int,
+  longRangeMissileChargeup: Int,
   timeSinceVisible: Int,
   isVisible: Boolean,
   buildActionLocked: Boolean,
@@ -607,8 +606,8 @@ object DroneObservation {
       isEnemy,
       lastAction,
       if (d.isVisible && d.missileBatteries > 0) d.missileCooldown else GameConstants.MissileCooldown,
-      if (d.isVisible && d.longRangeMissileCooldown > 0) d.longRangeMissileCooldown
-      else GameConstants.LongRangeMissileCooldown,
+      if (d.isVisible && d.longRangeMissileChargeup > 0) d.longRangeMissileChargeup
+      else 0,
       timeSinceVisible,
       d.isVisible,
       buildActionLocked = buildActionLocked,
