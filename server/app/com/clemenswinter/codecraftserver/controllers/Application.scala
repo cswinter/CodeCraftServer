@@ -42,7 +42,8 @@ case class ObsConfig(
   distanceToWall: Boolean,
   unitCount: Boolean,
   enforceUnitCap: Boolean,
-  unitCapOverride: Int
+  unitCapOverride: Int,
+  constructionProgress: Boolean
 ) {
   def rules: Int = (if (ruleMsdm) 1 else 0) + (if (ruleCosts) extraBuildActions.length + 1 else 0)
 }
@@ -153,7 +154,8 @@ class Application @Inject()(
                        distanceToWall: Boolean,
                        unitCount: Boolean,
                        enforceUnitCap: Boolean,
-                       unitCapOverride: Int) = Action { implicit request =>
+                       unitCapOverride: Int,
+                       constructionProgress: Boolean) = Action { implicit request =>
     val (games, buildActions) = read[(Seq[(Int, Int)], Seq[Seq[Int]])](request.body.asJson.get.toString)
     val obsConfig =
       ObsConfig(
@@ -177,7 +179,8 @@ class Application @Inject()(
         distanceToWall,
         unitCount,
         enforceUnitCap,
-        unitCapOverride
+        unitCapOverride,
+        constructionProgress
       )
     val payload: Seq[Observation] = for ((gameID, playerID) <- games)
       yield multiplayerServer.observe(gameID, playerID, lastSeen)
@@ -223,10 +226,12 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
   private val extraFeat = 5 // Unobserved features such as score, winner, ms health
   private val allyDroneFeat = 17 + (if (obsConfig.obsLastAction) 8 else 0) +
     (if (obsConfig.lastSeen) 2 else 0) + (if (obsConfig.isVisible) 1 else 0) +
-    (if (obsConfig.lockBuildAction) 1 else 0) + (if (obsConfig.distanceToWall) 5 else 0)
+    (if (obsConfig.lockBuildAction) 1 else 0) + (if (obsConfig.distanceToWall) 5 else 0) +
+    (if (obsConfig.constructionProgress) 2 + obsConfig.extraBuildActions.size + 1 else 0)
   private val enemyDroneFeat = 17 + (if (obsConfig.lastSeen) 2 else 0) +
     (if (obsConfig.isVisible) 1 else 0) +
-    (if (obsConfig.lockBuildAction) 1 else 0) + (if (obsConfig.distanceToWall) 5 else 0)
+    (if (obsConfig.lockBuildAction) 1 else 0) + (if (obsConfig.distanceToWall) 5 else 0) +
+    (if (obsConfig.constructionProgress) 2 + obsConfig.extraBuildActions.size + 1 else 0)
   private val mineralFeat = if (obsConfig.mineralAvailable) 4 else 3
   private val tileFeat = 4
   private val enemies = obsConfig.drones - obsConfig.allies
@@ -352,6 +357,21 @@ class ObsSerializer(obs: Seq[Observation], obsConfig: ObsConfig) {
       bb.putFloat(distanceToWall(obs, drone.xPos, drone.yPos, drone.orientation))
       bb.putFloat(distanceToWall(obs, drone.xPos, drone.yPos, drone.orientation + math.Pi / 4))
       bb.putFloat(distanceToWall(obs, drone.xPos, drone.yPos, drone.orientation + math.Pi / 2))
+    }
+    if (obsConfig.constructionProgress) {
+      bb.putFloat(drone.availableEnergy)
+      bb.putFloat(drone.requiredEnergy)
+      var foundBuild = 0
+      for (build <- obsConfig.extraBuildActions :+ Seq(0, 1, 0, 0, 0, 0)) {
+        if (drone.constructionSpec.contains(build)) {
+          bb.putFloat(1.0f)
+          foundBuild += 1
+        } else {
+          bb.putFloat(0.0f)
+        }
+      }
+      assert(foundBuild <= 1)
+      assert(foundBuild == 0 || drone.constructionSpec.nonEmpty)
     }
   }
 

@@ -577,7 +577,10 @@ sealed case class DroneObservation(
   timeSinceVisible: Int,
   isVisible: Boolean,
   buildActionLocked: Boolean,
-  harvestLock: Boolean
+  harvestLock: Boolean,
+  availableEnergy: Int,
+  requiredEnergy: Int,
+  constructionSpec: Option[Seq[Int]]
 )
 
 object DroneObservation {
@@ -606,14 +609,27 @@ object DroneObservation {
       isEnemy,
       lastAction,
       if (d.isVisible && d.missileBatteries > 0) d.missileCooldown else GameConstants.MissileCooldown,
-      if (d.isVisible && d.longRangeMissileChargeup > 0) d.longRangeMissileChargeup
-      else 0,
+      if (d.isVisible && d.longRangeMissileChargeup > 0) d.longRangeMissileChargeup else 0,
       timeSinceVisible,
       d.isVisible,
       buildActionLocked = buildActionLocked,
-      harvestLock = currentlyHarvesting
+      harvestLock = currentlyHarvesting,
+      availableEnergy = if (d.isVisible) d.availableEnergy else 0,
+      requiredEnergy =
+        if (d.isVisible) d.requiredEnergy.getOrElse(GameConstants.DroneConstructionTime * 50)
+        else GameConstants.DroneConstructionTime * 50,
+      constructionSpec = if (d.isVisible) d.constructionSpec.map(droneSpecToSeq) else None
     )
   }
+
+  def droneSpecToSeq(s: DroneSpec): Seq[Int] = Seq(
+    s.storageModules,
+    s.missileBatteries,
+    s.constructors,
+    s.engines,
+    s.shieldGenerators,
+    s.longRangeMissiles
+  )
 }
 
 sealed case class MineralObservation(
