@@ -99,7 +99,7 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
           m.symmetric
       )
     )
-    val simulator = server.startLocalGame(controllers, winCondition, map, rules, 1.hour)
+    val simulator = server.startLocalGame(controllers, winCondition, map, rules, 3.hour)
     gameID += 1
     val playerControllers = player2 match {
       case Some(p2) => Seq(player1, p2)
@@ -233,7 +233,7 @@ class PassiveDroneController(
     }
     val action = try {
       Log.debug(f"[${state.gameID}, ${state.player}] $id Waiting for action (=${this.hitpoints})")
-      Await.result(nextAction.future, 1.hours)
+      Await.result(nextAction.future, 3.hours)
     } catch {
       case e: TimeoutException => {
         println(f"TIMED OUT WAITING FOR ACTION, STOPPING GAME ${state.gameID}")
