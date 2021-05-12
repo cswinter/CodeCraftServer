@@ -18,6 +18,7 @@ body, html {
     height: 100%;
 }
 .floating-text {
+    display: none;
     z-index: 1;
     position: absolute;
     width: auto;
@@ -25,6 +26,7 @@ body, html {
     overflow: hidden;
 }
 .large-floating-text {
+    display: none;
     z-index: 1;
     position: absolute;
     width: auto;
