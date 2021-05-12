@@ -32,9 +32,9 @@ class DemoController(
       commands.lift(i - delay) match {
         case Some(cmd) =>
           cmd match {
-            case Idle =>
-            case Move(d) => moveInDirection(d)
-            case MoveTo(pos) => moveTo(pos)
+            case Idle                 =>
+            case Move(d)              => moveInDirection(d)
+            case MoveTo(pos)          => moveTo(pos)
             case MoveInDirection(dir) => moveInDirection(dir)
             case ActionCmd(action) =>
               if (action.move && action.turn == 0) {
@@ -113,8 +113,7 @@ object Demo {
          Seq.fill(3)(MoveInDirection(math.Pi / 2)) ++
            Seq.fill(15)(ActionCmd(DoNothing)) ++
            Seq(
-             ActionCmd(
-               Action(buildDrone = None, move = false, harvest = false, transfer = false, turn = -1)),
+             ActionCmd(Action(buildDrone = None, move = false, harvest = false, transfer = false, turn = -1)),
              ActionCmd(DoNothing)
            ))),
       (StartingDrone(-4500, 4000 - spacing, missileBatteries = 1),
@@ -190,7 +189,38 @@ object Demo {
                       constructors = 3,
                       storageModules = 3,
                       shieldGenerators = 1),
-        new DemoController(Seq(MoveTo(Vector2(0, -3000))))
+        new DemoController(Seq(MoveInDirection(0)))
+      ),
+      // DEMO 8: movement speed at different sizes
+      (
+        StartingDrone(-4500, 3500, missileBatteries = 1),
+        new DemoController(Seq(MoveInDirection(0)))
+      ),
+      (
+        StartingDrone(-4500, 3400, storageModules = 2),
+        new DemoController(Seq(MoveInDirection(0)))
+      ),
+      (
+        StartingDrone(-4500, 3300, missileBatteries = 2, shieldGenerators = 2),
+        new DemoController(Seq(MoveInDirection(0)))
+      ),
+      (
+        StartingDrone(-4500,
+                      3200,
+                      missileBatteries = 3,
+                      constructors = 3,
+                      storageModules = 3,
+                      shieldGenerators = 1),
+        new DemoController(Seq(MoveInDirection(0)))
+      ),
+      // DEMO 9: engines module
+      (
+        StartingDrone(-4500, 2800, missileBatteries = 2, shieldGenerators = 2),
+        new DemoController(Seq(MoveInDirection(0)))
+      ),
+      (
+        StartingDrone(-4500, 2700, missileBatteries = 2, shieldGenerators = 1, engines = 1),
+        new DemoController(Seq(MoveInDirection(0)))
       )
     ) ++ movementActions
 
