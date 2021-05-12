@@ -29,7 +29,8 @@ object ObserveGame {
 
   def runMultiplayer(autorestart: Boolean, autozoom: Boolean): Unit = {
     import scala.concurrent.ExecutionContext.Implicits.global
-    val simulator = TheGameMaster.prepareMultiplayerGame("localhost", TheGameMaster.replicatorAI())
+    val hostname = dom.window.location.hostname
+    val simulator = TheGameMaster.prepareMultiplayerGame(hostname, TheGameMaster.replicatorAI())
     simulator.onSuccess {
       case s: DroneWorldSimulator =>
         if (autozoom) {
