@@ -43,7 +43,9 @@ object ObserveGame {
       }
       if (autoobs) {
         val rnd = Random.nextInt(6)
-        if (rnd == 1) {
+        if (rnd == 0) {
+          s.autoObs = None
+        } else if (rnd == 1) {
           s.autoObs = Some(new FollowDroneObserver())
         } else {
           s.autoObs = Some(new FollowPlayerObserver())
