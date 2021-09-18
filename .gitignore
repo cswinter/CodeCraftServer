@@ -14,6 +14,8 @@ dist
 /RUNNING_PID
 .settings
 .DS_Store
+.metals
+.vscode
 
 # hidden cross project folders
 shared/.js
@@ -30,3 +32,4 @@ shared/.jvm
 .cache
 .target
 bin/
+

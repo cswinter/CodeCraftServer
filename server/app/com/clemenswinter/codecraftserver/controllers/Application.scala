@@ -58,8 +58,8 @@ class Application @Inject()(
     Ok(Index()).as("text/html")
   }
 
-  def observe(autorestart: Boolean, autozoom: Boolean) = Action {
-    Ok(Observe(autorestart, autozoom)).as("text/html")
+  def observe(autorestart: Boolean, autozoom: Boolean, autoobs: Boolean) = Action {
+    Ok(Observe(autorestart, autozoom, autoobs)).as("text/html")
   }
 
   def startGame(

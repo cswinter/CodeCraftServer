@@ -4,7 +4,7 @@
 
 # Home page
 GET        /                                       com.clemenswinter.codecraftserver.controllers.Application.index
-GET        /observe                                com.clemenswinter.codecraftserver.controllers.Application.observe(autorestart: Boolean ?= false, autozoom: Boolean ?= false)
+GET        /observe                                com.clemenswinter.codecraftserver.controllers.Application.observe(autorestart: Boolean ?= false, autozoom: Boolean ?= false, autoobs: Boolean ?= false)
 POST       /start-game                             com.clemenswinter.codecraftserver.controllers.Application.startGame(maxTicks: Option[Int], actionDelay: Int ?= 0, scriptedOpponent: String ?= "none", mothershipDamageMultiplier: Double ?= 1.0, allowHarvesting: Boolean ?= true, forceHarvesting: Boolean ?= true, randomizeIdle: Boolean ?= true)
 POST       /start-demo                             com.clemenswinter.codecraftserver.controllers.Application.startDemo()
 GET        /observation                            com.clemenswinter.codecraftserver.controllers.Application.playerState(gameID: Int, playerID: Int)
