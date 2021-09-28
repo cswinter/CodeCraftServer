@@ -17,7 +17,7 @@ import scala.concurrent.{Await, Future, Promise, TimeoutException}
 import scala.util.Random
 
 @Singleton
-class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
+class MultiplayerServer @Inject() (lifecycle: ApplicationLifecycle) {
   println("Starting multiplayer server")
   val maxCompletedGamesRetained = 1000
   var gameID = -1
@@ -31,29 +31,33 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
     .asInstanceOf[cwinter.codecraft.core.multiplayer.MultiplayerServer]
   val rng = new Random()
 
-  def startGame(maxTicks: Option[Int],
-                scriptedOpponent: String,
-                customMap: Option[MapSettings],
-                rules: SpecialRules,
-                allowHarvesting: Boolean,
-                forceHarvesting: Boolean,
-                randomizeIdle: Boolean): Integer = synchronized {
+  def startGame(
+    maxTicks: Option[Int],
+    scriptedOpponent: String,
+    customMap: Option[MapSettings],
+    rules: SpecialRules,
+    allowHarvesting: Boolean,
+    forceHarvesting: Boolean,
+    randomizeIdle: Boolean
+  ): Integer = synchronized {
     val initialDrones = customMap.map(m => (m.player1Drones.size, m.player2Drones.size)).getOrElse((1, 1))
     val maxGameLength = maxTicks.getOrElse(3 * 60 * 60)
     val mapWidth = customMap.map(_.mapWidth).getOrElse(6000)
-    val mapHeight = customMap.map(_.mapHeight).getOrElse(4000)
+    val mapHeight = customMap.map(_.mapHeight).getOrElse(3750)
     val tileWidth = 400
     val player1 =
-      new PlayerController(maxGameLength,
-                           BluePlayer,
-                           gameID + 1,
-                           mapWidth,
-                           mapHeight,
-                           tileWidth,
-                           rules,
-                           allowHarvesting,
-                           forceHarvesting,
-                           randomizeIdle)
+      new PlayerController(
+        maxGameLength,
+        BluePlayer,
+        gameID + 1,
+        mapWidth,
+        mapHeight,
+        tileWidth,
+        rules,
+        allowHarvesting,
+        forceHarvesting,
+        randomizeIdle
+      )
     var controllers: Seq[DroneControllerBase] =
       Seq.fill(initialDrones._1)(new PassiveDroneController(player1, Promise.successful(DoNothing)))
     var player2: Option[PlayerController] = None
@@ -72,38 +76,42 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
     } else {
       assert(scriptedOpponent == "none")
       val p2 =
-        new PlayerController(maxGameLength,
-                             OrangePlayer,
-                             gameID + 1,
-                             mapWidth,
-                             mapHeight,
-                             tileWidth,
-                             rules,
-                             allowHarvesting,
-                             forceHarvesting,
-                             randomizeIdle)
+        new PlayerController(
+          maxGameLength,
+          OrangePlayer,
+          gameID + 1,
+          mapWidth,
+          mapHeight,
+          tileWidth,
+          rules,
+          allowHarvesting,
+          forceHarvesting,
+          randomizeIdle
+        )
       player2 = Some(p2)
       controllers ++= Seq.fill(initialDrones._2)(
-        new PassiveDroneController(p2, Promise.successful(DoNothing)))
+        new PassiveDroneController(p2, Promise.successful(DoNothing))
+      )
     }
     val winCondition = Seq(DestroyAllEnemies, LargestFleet(maxGameLength))
-    val map = customMap.map(
-      m =>
-        (
-          new Rectangle(m.mapWidth / 2 - m.mapWidth,
-                        m.mapWidth / 2,
-                        m.mapHeight / 2 - m.mapHeight,
-                        m.mapHeight / 2),
-          m.player1Drones.map(_.toSpawn(BluePlayer)) ++ m.player2Drones.map(_.toSpawn(OrangePlayer)),
-          Left(m.minerals),
-          m.symmetric
+    val map = customMap.map(m =>
+      (
+        new Rectangle(
+          m.mapWidth / 2 - m.mapWidth,
+          m.mapWidth / 2,
+          m.mapHeight / 2 - m.mapHeight,
+          m.mapHeight / 2
+        ),
+        m.player1Drones.map(_.toSpawn(BluePlayer)) ++ m.player2Drones.map(_.toSpawn(OrangePlayer)),
+        Left(m.minerals),
+        m.symmetric
       )
     )
     val simulator = server.startLocalGame(controllers, winCondition, map, rules, 3.hour)
     gameID += 1
     val playerControllers = player2 match {
       case Some(p2) => Seq(player1, p2)
-      case _ => Seq(player1)
+      case _        => Seq(player1)
     }
     games += gameID -> Game(simulator, playerControllers)
     gameID
@@ -172,15 +180,18 @@ class MultiplayerServer @Inject()(lifecycle: ApplicationLifecycle) {
   }
 
   def debugState(): (Seq[GameDebugState], Int) = {
-    (for ((id, game) <- games.toSeq) yield {
-      GameDebugState(
-        id,
-        game.externalPlayers.head.observationsReady.isCompleted,
-        game.simulator.winner.map(_.id),
-        game.simulator.currentPhase.toString,
-        game.externalPlayers.head.unsafe_observe(game.simulator, true)
-      )
-    }, completedGames.size)
+    (
+      for ((id, game) <- games.toSeq) yield {
+        GameDebugState(
+          id,
+          game.externalPlayers.head.observationsReady.isCompleted,
+          game.simulator.winner.map(_.id),
+          game.simulator.currentPhase.toString,
+          game.externalPlayers.head.unsafe_observe(game.simulator, true)
+        )
+      },
+      completedGames.size
+    )
   }
 
   // it appears the class loader will not work during shutdown, so we need to get an instance of Server.Stop
@@ -231,16 +242,17 @@ class PassiveDroneController(
       val closest = enemiesInSight.minBy(enemy => (enemy.position - position).lengthSquared)
       if (isInLongRangeMissileRange(closest)) fireLongRangeMissilesAt(closest)
     }
-    val action = try {
-      Log.debug(f"[${state.gameID}, ${state.player}] $id Waiting for action (=${this.hitpoints})")
-      Await.result(nextAction.future, 3.hours)
-    } catch {
-      case e: TimeoutException => {
-        println(f"TIMED OUT WAITING FOR ACTION, STOPPING GAME ${state.gameID}")
-        state.stopped = true
-        DoNothing
+    val action =
+      try {
+        Log.debug(f"[${state.gameID}, ${state.player}] $id Waiting for action (=${this.hitpoints})")
+        Await.result(nextAction.future, 3.hours)
+      } catch {
+        case e: TimeoutException => {
+          println(f"TIMED OUT WAITING FOR ACTION, STOPPING GAME ${state.gameID}")
+          state.stopped = true
+          DoNothing
+        }
       }
-    }
     Log.debug(f"[${state.gameID}, ${state.player}] $id Obtained action (hitpoints=${this.hitpoints})")
 
     for (spec <- action.buildDrone) {
@@ -277,7 +289,9 @@ class PassiveDroneController(
       halt()
     }
 
-    if (!isHarvesting && mineralsInSight.nonEmpty && storedResources < storageModules * 7 && state.allowHarvesting) {
+    if (
+      !isHarvesting && mineralsInSight.nonEmpty && storedResources < storageModules * 7 && state.allowHarvesting
+    ) {
       val closest =
         mineralsInSight.minBy(mc => (mc.position - position).lengthSquared)
       if (isInHarvestingRange(closest)) {
@@ -294,7 +308,8 @@ class PassiveDroneController(
     }
 
     Log.debug(
-      f"[${state.gameID}, ${state.player}] $id Resetting action promise (hitpoints=${this.hitpoints})")
+      f"[${state.gameID}, ${state.player}] $id Resetting action promise (hitpoints=${this.hitpoints})"
+    )
     nextAction = Promise()
   }
 
@@ -362,11 +377,13 @@ class PlayerController(
   var tiles: Array[Array[MapTile]] = Array.tabulate(
     (mapWidth + tileWidth - 1) / tileWidth,
     (mapHeight + tileWidth - 1) / tileWidth
-  )(
-    (x, y) =>
-      new MapTile(x * tileWidth + tileWidth / 2 - mapWidth / 2,
-                  y * tileWidth + tileWidth / 2 - mapHeight / 2,
-                  0))
+  )((x, y) =>
+    new MapTile(
+      x * tileWidth + tileWidth / 2 - mapWidth / 2,
+      y * tileWidth + tileWidth / 2 - mapHeight / 2,
+      0
+    )
+  )
   var dronecount = 0
   var maxHitpoints = 0
   var minAlliedMSHealth = 0.0
@@ -403,8 +420,9 @@ class PlayerController(
     } else {
       minAlliedMSHealth = math.min(minAlliedMSHealth, alliedMS.min)
     }
-    val enemyMS = for (d <- sim.dronesFor(enemyPlayer) if d.constructors > 0)
-      yield d.hitpoints / maxHitpoints.toDouble
+    val enemyMS =
+      for (d <- sim.dronesFor(enemyPlayer) if d.constructors > 0)
+        yield d.hitpoints / maxHitpoints.toDouble
     if (enemyMS.isEmpty) {
       minEnemyMSHealth = 0
     } else {
@@ -434,34 +452,39 @@ class PlayerController(
         if d.isVisible
       } yield {
         timeLastSeen += d -> sim.timestep
-        DroneObservation(d,
-                         isEnemy = true,
-                         None,
-                         sim.timestep - timeLastSeen.getOrElse(d, 0),
-                         buildActionLocked = false)
+        DroneObservation(
+          d,
+          isEnemy = true,
+          None,
+          sim.timestep - timeLastSeen.getOrElse(d, 0),
+          buildActionLocked = false
+        )
       }) ++ (for {
         d <- enemyDrones
         if !d.isVisible && lastSeen
-      } yield
-        DroneObservation(d,
-                         isEnemy = true,
-                         None,
-                         sim.timestep - timeLastSeen.getOrElse(d, 0),
-                         buildActionLocked = true)),
+      } yield DroneObservation(
+        d,
+        isEnemy = true,
+        None,
+        sim.timestep - timeLastSeen.getOrElse(d, 0),
+        buildActionLocked = true
+      )),
       for {
         d <- sim.dronesFor(enemyPlayer)
-      } yield
-        DroneObservation(d,
-                         isEnemy = true,
-                         None,
-                         sim.timestep - timeLastSeen.getOrElse(d, 0),
-                         buildActionLocked = true),
+      } yield DroneObservation(
+        d,
+        isEnemy = true,
+        None,
+        sim.timestep - timeLastSeen.getOrElse(d, 0),
+        buildActionLocked = true
+      ),
       for (m <- minerals if !m.harvested)
-        yield
-          MineralObservation(m.position.x,
-                             m.position.y,
-                             m.size,
-                             alliedDrones.exists(_.currentlyHarvesting.contains(m))),
+        yield MineralObservation(
+          m.position.x,
+          m.position.y,
+          m.size,
+          alliedDrones.exists(_.currentlyHarvesting.contains(m))
+        ),
       alliedDrones
         .filter(!_.isDead)
         .map(score)
@@ -584,12 +607,14 @@ sealed case class DroneObservation(
 )
 
 object DroneObservation {
-  def apply(d: Drone,
-            isEnemy: Boolean,
-            lastAction: Option[Action],
-            timeSinceVisible: Int,
-            currentlyHarvesting: Boolean = false,
-            buildActionLocked: Boolean): DroneObservation = {
+  def apply(
+    d: Drone,
+    isEnemy: Boolean,
+    lastAction: Option[Action],
+    timeSinceVisible: Int,
+    currentlyHarvesting: Boolean = false,
+    buildActionLocked: Boolean
+  ): DroneObservation = {
     DroneObservation(
       if (d.isVisible) d.position.x else d.lastKnownPosition.x,
       if (d.isVisible) d.position.y else d.lastKnownPosition.y,
