@@ -25,6 +25,10 @@ object Observe {
                   data-autorestart="$autorestart"
                   data-autozoom="$autozoom"
                   data-autoobs="$autoobs"></script>
+          <script id="script" type="text/javascript" src="assets/client-opt.js"
+                  data-autorestart="$autorestart"
+                  data-autozoom="$autozoom"
+                  data-autoobs="$autoobs"></script>
         </body>
       </html>
       """
